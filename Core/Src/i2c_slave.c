@@ -302,7 +302,9 @@ void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c)
 
 void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode)
 {
-	printf("busy=%u\r\n", busy_flag_getter());
+
+	static uint8_t busy_fill[128];
+	 if (hi2c->Instance != I2C1) return;
 
 	if (TransferDirection == I2C_DIRECTION_TRANSMIT) // master is sending us data
 	{
@@ -320,8 +322,12 @@ void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, ui
         }
         else {
             // busy or not ready -> send 1-byte STATUS immediately
-            status_tx = status_byte;
-            HAL_I2C_Slave_Seq_Transmit_IT(hi2c, &status_tx, 1, I2C_NEXT_FRAME);
+//            status_tx = status_byte;
+//            HAL_I2C_Slave_Seq_Transmit_IT(hi2c, &status_tx, 1, I2C_NEXT_FRAME);
+            busy_fill[0] = status_byte;
+            for (int i = 1; i < 128; ++i) busy_fill[i] = 0x00;
+            HAL_I2C_Slave_Seq_Transmit_IT(hi2c, busy_fill, 128, I2C_NEXT_FRAME);
+
         }
 
 	}
@@ -343,7 +349,6 @@ void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c)
 void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
 
-	uint8_t cmd = *(hi2c->pBuffPtr - 1);
     if (!awaitingRTC) {
         // we just got cmdBuf[0]
         if (RxData[0] == I2C_CMD_SET_RTC) {
