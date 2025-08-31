@@ -366,7 +366,7 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
         	//process_data();
             // enqueue commands instead of calling process_data directly
         	if (busy_flag_getter()) {
-        	    printf("Busy — ignoring command 0x%02X\n", RxData[0]);
+        	    enqueue_i2c_cmd(RxData[0]);
         	    HAL_I2C_EnableListen_IT(hi2c);
         	    return;
         	}
