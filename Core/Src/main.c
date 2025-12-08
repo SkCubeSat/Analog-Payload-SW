@@ -26,6 +26,7 @@
 #include "i2c_slave.h"
 #include "adc.h"
 #include "i2c_queue.h"
+#include "data_log.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -153,44 +154,54 @@ void main_routine(void) {
 
 	//--------------------------- start cycle
 
-	mount_sdcard();
-	print_sdcard_stats();
+	uint8_t sdcard_status = mount_sdcard();
+  if(sdcard_status == 1)
+    {
+      	print_sdcard_stats();
+      
+		// keep the filename as short as possible
+		// e.g. "sample" can only write 10 files before it doesnt want to make anymore
+		// this is a bug
+		open_sdcard_file_write("s");
 
-	// keep the filename as short as possible
-	// e.g. "sample" can only write 10 files before it doesnt want to make anymore
-	// this is a bug
-	open_sdcard_file_write("s");
-
-	// may need to keep small or increase max size in write function if this gets too long
-	//need to add a time stamp when the data was recorded
-	write_sdcard_file(
+		// may need to keep small or increase max size in write function if this gets too long
+		//need to add a time stamp when the data was recorded
+		write_sdcard_file(
 			"op_noshd_p,op_mel_p,op_al_p,vref_noshd,vref_mel,vref_al,lm35,opto_noshd,opto_mel,opto_al\r\n");
+    }
 
-	const uint32_t num_samples = 5; // 2sec 450 samples = 15minutes
+    const uint32_t num_samples = 5; // 2sec 450 samples = 15minutes
 
-	for (int cnt = 0; cnt < num_samples; cnt++) {
+    for (int cnt = 0; cnt < num_samples; cnt++) {
 
-		// order is very important here, since it correlates to order of data written to csv
-		preform_opamp_measurement_log_to_sd();
-		printf("------------------------------\r\n");
-		preform_vref_measurement_log_to_sd();
-		printf("------------------------------\r\n");
-		read_lm35();
-		printf("------------------------------\r\n");
-		preform_opto_measurement_log_to_sd();
-		printf("------------------------------\r\n");
+      // order is very important here, since it correlates to order of data written to csv
+      preform_opamp_measurement_log_to_sd(sdcard_status);
+      printf("------------------------------\r\n");
+      preform_vref_measurement_log_to_sd(sdcard_status);
+      printf("------------------------------\r\n");
+      read_lm35(sdcard_status);
+      printf("------------------------------\r\n");
+      preform_opto_measurement_log_to_sd(sdcard_status);
+      printf("------------------------------\r\n");
 
-		// new row
-		write_sdcard_file("\r\n");
-		HAL_Delay(2000);
-	}
+      // new row
+	  if(sdcard_status == 1)
+      write_sdcard_file("\r\n");
+      HAL_Delay(2000);
+    }
 
 	printf("all done\r\n");
+	if(sdcard_status == 1)
+	    {
 
-	close_sdcard_file();
+			close_sdcard_file();
 
-	// always do this after testing is done so if power is cut, no data is lost
-	unmount_sdcard();
+			// always do this after testing is done so if power is cut, no data is lost
+			unmount_sdcard();
+
+		}
+
+
 
 	//turn_off_5v_plane();
 
@@ -324,7 +335,7 @@ int main(void)
 				case I2C_CMD_SEND_DATA:
 					busyFlag = 1;
 					printf("loading buffer\r\n");
-					load_buf();
+					load_buff();
 					i2c_flag_reset();
 					busyFlag = 0;
 					break;

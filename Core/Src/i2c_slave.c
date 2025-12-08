@@ -121,7 +121,7 @@ void load_buf(void)
         return;
     }
 
-    mount_sdcard();
+    uint8_t sdcard_status = mount_sdcard();
 
     // 1) Find latest S_*.CSV
     if (!get_latest_s_file(filename, sizeof(filename))) {

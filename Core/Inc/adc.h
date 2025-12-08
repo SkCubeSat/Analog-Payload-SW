@@ -38,19 +38,19 @@ void select_adc_channel(int channel);
  * input: none
  * output: none, write the numbers to the SD card
  * */
-void preform_opamp_measurement_log_to_sd(void);
+void preform_opamp_measurement_log_to_sd(uint8_t);
 
 //same as above but for voltage references
-void preform_vref_measurement_log_to_sd(void);
+void preform_vref_measurement_log_to_sd(uint8_t);
 
 //same but for the lm35
 //I don't think the temp is getting written to the sd card but I could be wrong
 //TODO: add sd card related stuffs
-void read_lm35(void);
+void read_lm35(uint8_t);
 
 //same but for the opto couplers
 //suspecting there are some problems with the algorithm but could be the current hardware issues
-void preform_opto_measurement_log_to_sd(void);
+void preform_opto_measurement_log_to_sd(uint8_t);
 
 
 #endif /* INC_ADC_H_ */
