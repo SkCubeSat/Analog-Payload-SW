@@ -10,6 +10,7 @@
 #include "i2c_slave.h"
 #include "sdcard.h"
 #include "i2c_queue.h"
+#include "data_log.h"
 
 static const uint8_t busyMsg[] = "BUSY";
 
@@ -102,7 +103,7 @@ void pwr_flag_setter(uint8_t flag)
 
 void load_buf(void)
 {
-	printf("load buffer function");
+	printf("load_buf function: load buffer function");
     char     filename[LATEST_NAME_MAX];
     uint16_t values[MAX_VALUES];
     uint32_t valCount = 0;
@@ -121,38 +122,57 @@ void load_buf(void)
         return;
     }
 
-    uint8_t sdcard_status = mount_sdcard();
+//    uint8_t sdcard_status = mount_sdcard();
+    //test remove line below later
+    uint8_t sdcard_status = 0;
 
-    // 1) Find latest S_*.CSV
-    if (!get_latest_s_file(filename, sizeof(filename))) {
-        printf("No S_*.CSV files found!\r\n");
-        unmount_sdcard();
-        i2c_set_error(1);
-        i2c_set_busy(0);
-        return;
-    }
-    printf("Loading latest file: %s\r\n", filename);
+    if(sdcard_status == 1){
 
-    // 2) Open it (your wrapper sets global 'fres')
-    open_sdcard_file_read(filename);
-    if (fres != FR_OK) {
-        printf("open_sdcard_file_read failed (%d)\r\n", (int)fres);
-        unmount_sdcard();
-        i2c_set_error(1);
-        i2c_set_busy(0);
-        return;
+    	 // 1) Find latest S_*.CSV
+    	    if (!get_latest_s_file(filename, sizeof(filename))) {
+    	        printf("No S_*.CSV files found!\r\n");
+    	        unmount_sdcard();
+    	        i2c_set_error(1);
+    	        i2c_set_busy(0);
+    	        return;
+    	    }
+    	    printf("Loading latest file: %s\r\n", filename);
+
+    	    // 2) Open it (your wrapper sets global 'fres')
+    	    open_sdcard_file_read(filename);
+    	    if (fres != FR_OK) {
+    	        printf("open_sdcard_file_read failed (%d)\r\n", (int)fres);
+    	        unmount_sdcard();
+    	        i2c_set_error(1);
+    	        i2c_set_busy(0);
+    	        return;
+    	    }
+
+    	    // 3) Parse CSV -> values[]
+    	    valCount = parse_csv_rows(values);  // count of uint16s parsed
+    	    if (valCount == 0) {
+    	        printf("parse_csv_rows returned 0\r\n");
+    	        close_sdcard_file();
+    	        unmount_sdcard();
+    	        i2c_set_error(1);
+    	        i2c_set_busy(0);
+    	        return;
+    	    }
     }
 
-    // 3) Parse CSV -> values[]
-    valCount = parse_csv_rows(values);  // count of uint16s parsed
-    if (valCount == 0) {
-        printf("parse_csv_rows returned 0\r\n");
-        close_sdcard_file();
-        unmount_sdcard();
-        i2c_set_error(1);
-        i2c_set_busy(0);
-        return;
+    else {
+    	//use buffer instead of SDcard
+    	memcpy(values, data_log[routine_num], data_count * sizeof(uint16_t));
+    	valCount = data_count;  // Set valCount so pack_values works correctly
+    	printf("\nvalCount: %u", data_count);
+    	for(int i = 0; i < data_count; i++)
+    	{
+    		printf("\r\n buffer data:%u", values[i]);  // Use values[i] not data_log[i]
+    	}
+
     }
+
+
 
     // 4) Pack numeric values into TxBuffer (temporarily at [0..))
     //    pack_values returns bytes written (valCount*2)
@@ -160,7 +180,9 @@ void load_buf(void)
 
     // 5) Append ASCII timestamp; returns bytes appended
     //    (Write it immediately after packed values)
-    offset += append_file_timestamp(filename, TxBuffer, offset);
+    if(sdcard_status == 1)
+    	offset += append_file_timestamp(filename, TxBuffer, offset);
+
 
     // Payload was built at TxBuffer[0..offset)
     payload_len = offset;
@@ -169,8 +191,11 @@ void load_buf(void)
     if (payload_len + 3 > TxSIZE) {
         printf("Payload too large: %lu (max %u)\r\n",
                (unsigned long)payload_len, (unsigned)TxSIZE);
-        close_sdcard_file();
-        unmount_sdcard();
+        if(sdcard_status == 1) {
+
+            close_sdcard_file();
+            unmount_sdcard();
+        }
         i2c_set_error(1);
         i2c_set_busy(0);
         return;
@@ -187,8 +212,12 @@ void load_buf(void)
     buf_size = payload_len + 3;
 
     // 7) Cleanup storage
-    close_sdcard_file();
-    unmount_sdcard();
+    if(sdcard_status == 1) {
+
+        close_sdcard_file();
+        unmount_sdcard();
+    }
+
 
     // 8) Mark READY (not busy)
     i2c_set_busy(0);

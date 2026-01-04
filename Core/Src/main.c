@@ -154,7 +154,9 @@ void main_routine(void) {
 
 	//--------------------------- start cycle
 
-	uint8_t sdcard_status = mount_sdcard();
+//	uint8_t sdcard_status = mount_sdcard();
+	//test remove line below later
+	uint8_t sdcard_status = 0;
   if(sdcard_status == 1)
     {
       	print_sdcard_stats();
@@ -172,6 +174,7 @@ void main_routine(void) {
 
     const uint32_t num_samples = 5; // 2sec 450 samples = 15minutes
 
+
     for (int cnt = 0; cnt < num_samples; cnt++) {
 
       // order is very important here, since it correlates to order of data written to csv
@@ -186,7 +189,12 @@ void main_routine(void) {
 
       // new row
 	  if(sdcard_status == 1)
-      write_sdcard_file("\r\n");
+		  write_sdcard_file("\r\n");
+	  else{
+		  //takes 6 uint16 blocks
+//		  data_log_new_routine();
+		  append_current_datetime_to_array(data_log, num_samples*10, 56);
+	  }
       HAL_Delay(2000);
     }
 
@@ -335,7 +343,7 @@ int main(void)
 				case I2C_CMD_SEND_DATA:
 					busyFlag = 1;
 					printf("loading buffer\r\n");
-					load_buff();
+					load_buf();
 					i2c_flag_reset();
 					busyFlag = 0;
 					break;

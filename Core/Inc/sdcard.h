@@ -18,7 +18,7 @@
 #include "main.h"
 
 //https://community.st.com/t5/stm32-mcus-products/stm32f103-sdio-fatfs-fault-issue/m-p/411951/highlight/true#M118933
-unsigned int mount_sdcard(void);
+uint8_t mount_sdcard(void);
 void print_sdcard_stats(void);
 void open_sdcard_file_read(char* filename);
 void read_sdcard_file(void);
