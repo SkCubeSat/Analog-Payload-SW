@@ -165,10 +165,7 @@ void load_buf(void)
     	memcpy(values, data_log[routine_num], data_count * sizeof(uint16_t));
     	valCount = data_count;  // Set valCount so pack_values works correctly
     	printf("\nvalCount: %u", data_count);
-    	for(int i = 0; i < data_count; i++)
-    	{
-    		printf("\r\n buffer data:%u", values[i]);  // Use values[i] not data_log[i]
-    	}
+
 
     }
 
