@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # .service stored in debian@BeagleBone:/etc/systemd/system$ in pocketbeagle
 # systemctl stop i2c-logger.service
+#WILL have to instal SMBUS2 !!
 import os, time, csv, datetime, struct
 from pathlib import Path
 from smbus2 import SMBus, i2c_msg

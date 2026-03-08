@@ -93,13 +93,13 @@ void pwr_flag_setter(uint8_t flag)
 
 //---------------------tx buffer loading functions---------------------------------------
 //TODO this function only reads the data files. To read the error logs we need a different function
-//TODO add time stamps to the files
+//TODO add time stamps to the files(when SD card failes i.e. sd_status=0)
 // Assumptions:
 // - TxSIZE is the total size of TxBuffer
 // - i2c_set_busy(), i2c_set_ready(), i2c_set_error() manipulate status_byte bits
-// - pack_values() and append_file_timestamp() work as you posted
+// - pack_values() and append_file_timestamp() 
 // - LATEST_NAME_MAX, MAX_VALUES, etc. are defined
-// - TxBuffer, buf_size are module-scope variables (as in your code)
+// - TxBuffer, buf_size are module-scope variables
 
 void load_buf(void)
 {
@@ -122,9 +122,9 @@ void load_buf(void)
         return;
     }
 
-//    uint8_t sdcard_status = mount_sdcard();
-    //test remove line below later
-    uint8_t sdcard_status = 0;
+    uint8_t sdcard_status = mount_sdcard();
+    //to test remove line below an also in the main.cpp !!
+//    uint8_t sdcard_status = 0;
 
     if(sdcard_status == 1){
 
@@ -138,7 +138,7 @@ void load_buf(void)
     	    }
     	    printf("Loading latest file: %s\r\n", filename);
 
-    	    // 2) Open it (your wrapper sets global 'fres')
+    	    // 2) Open it (wrapper sets global 'fres')
     	    open_sdcard_file_read(filename);
     	    if (fres != FR_OK) {
     	        printf("open_sdcard_file_read failed (%d)\r\n", (int)fres);

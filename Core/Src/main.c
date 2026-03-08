@@ -154,9 +154,9 @@ void main_routine(void) {
 
 	//--------------------------- start cycle
 
-//	uint8_t sdcard_status = mount_sdcard();
+	uint8_t sdcard_status = mount_sdcard();
 	//test remove line below later
-	uint8_t sdcard_status = 0;
+//	uint8_t sdcard_status = 0;
   if(sdcard_status == 1)
     {
       	print_sdcard_stats();
