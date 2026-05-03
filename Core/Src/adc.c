@@ -6,6 +6,7 @@
  */
 
 #include "adc.h"
+#include "data_log.h"
 
 extern ADC_HandleTypeDef hadc1;
 extern TIM_HandleTypeDef htim1;
@@ -204,7 +205,7 @@ void select_adc_channel(int channel)
     }
 }
 
-void preform_opamp_measurement_log_to_sd(void) {
+void preform_opamp_measurement_log_to_sd(uint8_t sd_status) {
 	char adc_buf[15];
 
 	// dont need to convert to voltages here, since we divide at the end for gain
@@ -270,11 +271,18 @@ void preform_opamp_measurement_log_to_sd(void) {
 		 }
 
 	}
-  snprintf(adc_buf, 15, "%u,%u,%u,", noshd_gain, mel_gain, al_gain);
-  write_sdcard_file(adc_buf);
+  if(sd_status == 1) {
+	  snprintf(adc_buf, 15, "%u,%u,%u,", noshd_gain, mel_gain, al_gain);
+      write_sdcard_file(adc_buf);
+  }
+  else {
+	  data_log_push(noshd_gain);
+	  data_log_push(mel_gain);
+	  data_log_push(al_gain);
+  }
 }
 
-void preform_vref_measurement_log_to_sd(void) {
+void preform_vref_measurement_log_to_sd(uint8_t sd_status) {
 	char adc_buf[40];
 	uint16_t quantized_vref_val;
 
@@ -291,15 +299,19 @@ void preform_vref_measurement_log_to_sd(void) {
 		  if (i == 5) { printf("VREF MEL quantized val: %u\r\n", quantized_vref_val);}
 		  if (i == 6) { printf("VREF AL quantized val: %u\r\n", quantized_vref_val);}
 
-
-		  snprintf(adc_buf, 40, "%u,", quantized_vref_val);
-		  write_sdcard_file(adc_buf);
+		  if(sd_status == 1) {
+			  snprintf(adc_buf, 40, "%u,", quantized_vref_val);
+			  write_sdcard_file(adc_buf);
+		  }
+		  else {
+			  data_log_push(quantized_vref_val);
+		  }
 
 	}
 
 }
 
-void read_lm35(void) {
+void read_lm35(uint8_t sd_status) {
 		char adc_buf[40];
 
 		uint16_t quantized_lm35_v;
@@ -312,11 +324,18 @@ void read_lm35(void) {
 	  quantized_lm35_v = HAL_ADC_GetValue(&hadc1);
 
 	  printf("LM35 quantized volt: %u\r\n", quantized_lm35_v);
-	  snprintf(adc_buf, 40, "%u,", quantized_lm35_v);
-	  write_sdcard_file(adc_buf);
+
+
+	  if(sd_status == 1) {
+		  snprintf(adc_buf, 40, "%u,", quantized_lm35_v);
+		  write_sdcard_file(adc_buf);
+		  }
+	  else {
+			  data_log_push(quantized_lm35_v);
+		  }
 }
 
-void preform_opto_measurement_log_to_sd(void) {
+void preform_opto_measurement_log_to_sd(uint8_t sd_status) {
 	char adc_buf[15];
 
 	// dont need to convert to voltages here, since we divide at the end for gain
@@ -403,6 +422,15 @@ void preform_opto_measurement_log_to_sd(void) {
 		 }
 
 	}
-  snprintf(adc_buf, 15, "%u,%u,%u,", noshd_ctr, mel_ctr, al_ctr);
-  write_sdcard_file(adc_buf);
+
+  if(sd_status == 1) {
+	  snprintf(adc_buf, 15, "%u,%u,%u,", noshd_ctr, mel_ctr, al_ctr);
+	  write_sdcard_file(adc_buf);
+	  }
+  else {
+		  data_log_push(noshd_ctr);
+		  data_log_push(mel_ctr);
+		  data_log_push(al_ctr);
+	  }
+
 }

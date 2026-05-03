@@ -26,16 +26,18 @@
 	  char* _filename;
 
 
-void mount_sdcard(void) {
+	  uint8_t mount_sdcard(void) {
 	  //Open the file system
 	  fres = f_mount(&FatFs, "", 1); //1=mount now
 
 	  if (fres != FR_OK) {
 		printf("f_mount error (%i)\r\n", fres);
-		Error_Handler();
+		return 0;
+//		Error_Handler();
 	  }
 
 	  printf("sd card mounted!\r\n");
+	  return 1;
 
 
 }

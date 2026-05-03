@@ -3,6 +3,8 @@
 [Rr]elease
 [Dd]ebug
 .launch
+notes.txt
+.settings/language.settings.xml
 
 # Prerequisites
 *.d

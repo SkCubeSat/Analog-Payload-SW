@@ -49,9 +49,15 @@
 #define I2C_CMD_SEND_DATA   197
 #define I2C_CMD_SEND_ERROR	198
 
+extern volatile uint8_t is_i2c_reinit_needed;
 
 //this function let the main.c to read the i2c flag
 uint8_t i2c_flag_getter();
+
+void i2c_set_busy(uint8_t on);
+void i2c_set_ready(uint8_t on);
+void i2c_set_error(uint8_t on);
+uint8_t i2c_get_status(void);   // optional helper
 
 //this function let the main.c to reset the i2c flag
 void i2c_flag_reset();

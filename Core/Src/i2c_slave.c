@@ -9,6 +9,8 @@
 #include "main.h"
 #include "i2c_slave.h"
 #include "sdcard.h"
+#include "i2c_queue.h"
+#include "data_log.h"
 
 static const uint8_t busyMsg[] = "BUSY";
 
@@ -40,11 +42,11 @@ static uint8_t rtcBuf[RTC_PAYLOAD_LEN];
 static uint8_t TxBuffer[TxSIZE];
 
 //dynamic size of the buffer
-static uint16_t buf_size = 0;
+static volatile uint16_t buf_size = 0;
 
 // Track # bytes sent/received
-uint8_t rxCount = 0;
-uint8_t txCount = 0;
+volatile uint8_t rxCount = 0;
+volatile uint8_t txCount = 0;
 
 int firstByteRecieved = false; 
 
@@ -53,6 +55,17 @@ int countRxCplt = 0; // # times rxCplt is called
 int countError = 0;  // # times error is called
 
 uint8_t count = 0;
+
+
+volatile uint8_t is_i2c_reinit_needed = 0;
+
+static volatile uint8_t status_byte = 0; // stays private here
+static uint8_t status_tx;
+
+void i2c_set_busy(uint8_t on)  { if(on) status_byte |= 0x01; else status_byte &= (uint8_t)~0x01; }
+void i2c_set_ready(uint8_t on) { if(on) status_byte |= 0x02; else status_byte &= (uint8_t)~0x02; }
+void i2c_set_error(uint8_t on) { if(on) status_byte |= 0x04; else status_byte &= (uint8_t)~0x04; }
+uint8_t i2c_get_status(void)   { return status_byte; }
 
 
 //--------------getter and setter functions-----------------------------------
@@ -80,37 +93,136 @@ void pwr_flag_setter(uint8_t flag)
 
 //---------------------tx buffer loading functions---------------------------------------
 //TODO this function only reads the data files. To read the error logs we need a different function
-//TODO add time stamps to the files
-void load_buf(void) {
+//TODO add time stamps to the files(when SD card failes i.e. sd_status=0)
+// Assumptions:
+// - TxSIZE is the total size of TxBuffer
+// - i2c_set_busy(), i2c_set_ready(), i2c_set_error() manipulate status_byte bits
+// - pack_values() and append_file_timestamp() 
+// - LATEST_NAME_MAX, MAX_VALUES, etc. are defined
+// - TxBuffer, buf_size are module-scope variables
+
+void load_buf(void)
+{
+	printf("load_buf function: load buffer function");
     char     filename[LATEST_NAME_MAX];
     uint16_t values[MAX_VALUES];
-    uint32_t valCount, offset;
+    uint32_t valCount = 0;
+    uint32_t offset   = 0;   // payload write index (no header yet)
+    uint32_t payload_len;
 
-    mount_sdcard();
+    // Mark busy while building the buffer
+    i2c_set_busy(1);
+    i2c_set_ready(0);
+    i2c_set_error(0);
 
-    // 1) Determine latest file
-    if (!get_latest_s_file(filename, sizeof(filename))) {
-        printf("No S_*.CSV files found!\r\n");
+    // Safety: require space for 3-byte header later
+    if (TxSIZE < 3) {
+        i2c_set_error(1);
+        i2c_set_busy(0);
         return;
     }
-    printf("Loading latest file: %s\r\n", filename);
 
-    // 2) Open file
-    open_sdcard_file_read(filename);
+    uint8_t sdcard_status = mount_sdcard();
+    //to test remove line below an also in the main.cpp !!
+//    uint8_t sdcard_status = 0;
 
-    // 3) Parse CSV rows into 'values'
-    valCount = parse_csv_rows(values);
+    if(sdcard_status == 1){
 
-    // 4) Pack numeric values into TxBuffer
+    	 // 1) Find latest S_*.CSV
+    	    if (!get_latest_s_file(filename, sizeof(filename))) {
+    	        printf("No S_*.CSV files found!\r\n");
+    	        unmount_sdcard();
+    	        i2c_set_error(1);
+    	        i2c_set_busy(0);
+    	        return;
+    	    }
+    	    printf("Loading latest file: %s\r\n", filename);
+
+    	    // 2) Open it (wrapper sets global 'fres')
+    	    open_sdcard_file_read(filename);
+    	    if (fres != FR_OK) {
+    	        printf("open_sdcard_file_read failed (%d)\r\n", (int)fres);
+    	        unmount_sdcard();
+    	        i2c_set_error(1);
+    	        i2c_set_busy(0);
+    	        return;
+    	    }
+
+    	    // 3) Parse CSV -> values[]
+    	    valCount = parse_csv_rows(values);  // count of uint16s parsed
+    	    if (valCount == 0) {
+    	        printf("parse_csv_rows returned 0\r\n");
+    	        close_sdcard_file();
+    	        unmount_sdcard();
+    	        i2c_set_error(1);
+    	        i2c_set_busy(0);
+    	        return;
+    	    }
+    }
+
+    else {
+    	//use buffer instead of SDcard
+    	memcpy(values, data_log[routine_num], data_count * sizeof(uint16_t));
+    	valCount = data_count;  // Set valCount so pack_values works correctly
+    	printf("\nvalCount: %u", data_count);
+
+
+    }
+
+
+
+    // 4) Pack numeric values into TxBuffer (temporarily at [0..))
+    //    pack_values returns bytes written (valCount*2)
     offset = pack_values(values, valCount, TxBuffer);
 
-    // 5) Append file timestamp and get total size
-    buf_size = offset + append_file_timestamp(filename, TxBuffer, offset);
+    // 5) Append ASCII timestamp; returns bytes appended
+    //    (Write it immediately after packed values)
+    if(sdcard_status == 1)
+    	offset += append_file_timestamp(filename, TxBuffer, offset);
 
-    // 6) Cleanup
-    close_sdcard_file();
-    unmount_sdcard();
+
+    // Payload was built at TxBuffer[0..offset)
+    payload_len = offset;
+
+    // 6) Final on-wire layout: [STATUS][LEN_L][LEN_H][PAYLOAD...]
+    if (payload_len + 3 > TxSIZE) {
+        printf("Payload too large: %lu (max %u)\r\n",
+               (unsigned long)payload_len, (unsigned)TxSIZE);
+        if(sdcard_status == 1) {
+
+            close_sdcard_file();
+            unmount_sdcard();
+        }
+        i2c_set_error(1);
+        i2c_set_busy(0);
+        return;
+    }
+
+    // Shift payload up by 3 bytes (safe with memmove)
+    memmove(&TxBuffer[3], &TxBuffer[0], payload_len);
+
+    // Fill LEN (little-endian). STATUS byte (TxBuffer[0]) is set in AddrCallback.
+    TxBuffer[1] = (uint8_t)(payload_len & 0xFF);
+    TxBuffer[2] = (uint8_t)((payload_len >> 8) & 0xFF);
+
+    // Total bytes available to serve when ready
+    buf_size = payload_len + 3;
+
+    // 7) Cleanup storage
+    if(sdcard_status == 1) {
+
+        close_sdcard_file();
+        unmount_sdcard();
+    }
+
+
+    // 8) Mark READY (not busy)
+    i2c_set_busy(0);
+    i2c_set_ready(1);
+    // leave error as is
 }
+
+
 
 uint8_t get_latest_s_file(char *outName, size_t outSize) {
     DIR dir;
@@ -283,44 +395,56 @@ static void handle_rtc_payload(void)
 //---------------------------callback functions---------------------------------------------
 void HAL_I2C_ListenCpltCallback(I2C_HandleTypeDef *hi2c)
 {
-	HAL_I2C_EnableListen_IT(hi2c);
+    if (hi2c->Instance == I2C1) {
+        HAL_I2C_EnableListen_IT(hi2c);
+    }
 }
 
-void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c, uint8_t TransferDirection, uint16_t AddrMatchCode)
+// add a global to cap each transfer
+static volatile uint16_t tx_total = 0;
+
+void HAL_I2C_AddrCallback(I2C_HandleTypeDef *hi2c,
+                          uint8_t TransferDirection,
+                          uint16_t AddrMatchCode)
 {
-	if (busy_flag_getter()) {
-		// We’re busy—immediately NACK or send a “BUSY” packet
-		// Here we choose to send back a 4-byte ASCII “BUSY”
-		HAL_I2C_Slave_Seq_Transmit_IT(
-			hi2c,
-			(uint8_t*)busyMsg,
-			sizeof(busyMsg)-1,
-			I2C_FIRST_FRAME
-		);
-		return;
-	}
-	if (TransferDirection == I2C_DIRECTION_TRANSMIT) // master is sending us data
-	{
-		awaitingRTC = false;
+    (void)AddrMatchCode;
+    if (hi2c->Instance != I2C1) return;
+
+    if (TransferDirection == I2C_DIRECTION_TRANSMIT) {
+        // Master -> Slave (receive command)
+        awaitingRTC = false;
         rxCount = 0;
-        //countAddr++;
-        HAL_I2C_Slave_Seq_Receive_IT(hi2c, (RxData + rxCount), 1, I2C_FIRST_FRAME);
-	}
-	else
-	{
-        txCount = 0;
-        HAL_I2C_Slave_Seq_Transmit_IT(hi2c, TxBuffer, 1, I2C_FIRST_FRAME);
-	}
+        HAL_I2C_Slave_Seq_Receive_IT(hi2c, &RxData[0], 1, I2C_FIRST_FRAME);
+        return;
+    }
+
+    // Master READS from us
+    txCount = 0;
+    TxBuffer[0] = status_byte;  // always serve fresh status first
+
+    // If READY and not BUSY and you have a buffer prepared,
+    // serve the entire buffer [STATUS][LEN_L][LEN_H][PAYLOAD...]
+    if ((status_byte & 0x02) && !(status_byte & 0x01) && (buf_size >= 1)) {
+        tx_total = buf_size;      // e.g. 3 + payload_len
+    } else {
+        tx_total = 1;             // just STATUS when busy/not-ready
+    }
+
+    // kick off with the first byte; TxCplt will feed the rest
+    HAL_I2C_Slave_Seq_Transmit_IT(hi2c, &TxBuffer[0], 1, I2C_FIRST_FRAME);
 }
+
 
 
 //TODO: implement transmitting the information collected in the SD card back to OBC
 //2 types of info: 1. data collected, 2. error log
 void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
+	if (hi2c->Instance != I2C1) return;
+
     txCount++;
     if(txCount < buf_size){
-    	HAL_I2C_Slave_Seq_Transmit_IT(hi2c, (TxBuffer + txCount), 1, I2C_NEXT_FRAME);
+    	HAL_I2C_Slave_Seq_Transmit_IT(hi2c, &TxBuffer[txCount], 1, I2C_NEXT_FRAME);
     	//i2c_flag = I2C_FLAG_READ_DATA;
     }
 }
@@ -328,6 +452,7 @@ void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c)
 // Byte-Receive Complete
 void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
+
     if (!awaitingRTC) {
         // we just got cmdBuf[0]
         if (RxData[0] == I2C_CMD_SET_RTC) {
@@ -342,7 +467,14 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
         }
         else {
             // … handle other commands …
-            process_data();
+        	//process_data();
+            // enqueue commands instead of calling process_data directly
+        	if (busy_flag_getter()) {
+        	    enqueue_i2c_cmd(RxData[0]);
+        	    HAL_I2C_EnableListen_IT(hi2c);
+        	    return;
+        	}
+            enqueue_i2c_cmd(RxData[0]);
             HAL_I2C_EnableListen_IT(hi2c);
         }
     }
@@ -352,10 +484,16 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
     }
 }
 
+
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
 {
     countError++; 
     uint32_t errorCode = HAL_I2C_GetError(hi2c);
+
+    if (hi2c->Instance == I2C1) {
+        // Mark for reinit outside ISR context
+    	is_i2c_reinit_needed = 1;
+    }
 
     if (errorCode == 4) // AF (ack failure): master stopped sending at less than RxSIZE
     {

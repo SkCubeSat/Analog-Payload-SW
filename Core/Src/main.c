@@ -25,6 +25,8 @@
 #include "sdcard.h"
 #include "i2c_slave.h"
 #include "adc.h"
+#include "i2c_queue.h"
+#include "data_log.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -140,9 +142,11 @@ void turn_off_PWM_gen(void) {
 }
 
 void main_routine(void) {
+	busyFlag = 1;
 	printf("fully initialized, +5V devices off, delaying 5 seconds\r\n");
 	HAL_Delay(5000);
 
+	printf("busy=%u\r\n", busy_flag_getter());
 	//turn_on_5v_plane();
 
 	printf("+5V device powered, delaying 5 seconds\r\n");
@@ -150,44 +154,62 @@ void main_routine(void) {
 
 	//--------------------------- start cycle
 
-	mount_sdcard();
-	print_sdcard_stats();
+	uint8_t sdcard_status = mount_sdcard();
+	//test remove line below later
+//	uint8_t sdcard_status = 0;
+  if(sdcard_status == 1)
+    {
+      	print_sdcard_stats();
+      
+		// keep the filename as short as possible
+		// e.g. "sample" can only write 10 files before it doesnt want to make anymore
+		// this is a bug
+		open_sdcard_file_write("s");
 
-	// keep the filename as short as possible
-	// e.g. "sample" can only write 10 files before it doesnt want to make anymore
-	// this is a bug
-	open_sdcard_file_write("s");
-
-	// may need to keep small or increase max size in write function if this gets too long
-	//need to add a time stamp when the data was recorded
-	write_sdcard_file(
+		// may need to keep small or increase max size in write function if this gets too long
+		//need to add a time stamp when the data was recorded
+		write_sdcard_file(
 			"op_noshd_p,op_mel_p,op_al_p,vref_noshd,vref_mel,vref_al,lm35,opto_noshd,opto_mel,opto_al\r\n");
+    }
 
-	const uint32_t num_samples = 5; // 2sec 450 samples = 15minutes
+    const uint32_t num_samples = 5; // 2sec 450 samples = 15minutes
 
-	for (int cnt = 0; cnt < num_samples; cnt++) {
 
-		// order is very important here, since it correlates to order of data written to csv
-		preform_opamp_measurement_log_to_sd();
-		printf("------------------------------\r\n");
-		preform_vref_measurement_log_to_sd();
-		printf("------------------------------\r\n");
-		read_lm35();
-		printf("------------------------------\r\n");
-		preform_opto_measurement_log_to_sd();
-		printf("------------------------------\r\n");
+    for (int cnt = 0; cnt < num_samples; cnt++) {
 
-		// new row
-		write_sdcard_file("\r\n");
-		HAL_Delay(2000);
-	}
+      // order is very important here, since it correlates to order of data written to csv
+      preform_opamp_measurement_log_to_sd(sdcard_status);
+      printf("------------------------------\r\n");
+      preform_vref_measurement_log_to_sd(sdcard_status);
+      printf("------------------------------\r\n");
+      read_lm35(sdcard_status);
+      printf("------------------------------\r\n");
+      preform_opto_measurement_log_to_sd(sdcard_status);
+      printf("------------------------------\r\n");
+
+      // new row
+	  if(sdcard_status == 1)
+		  write_sdcard_file("\r\n");
+	  else{
+		  //takes 6 uint16 blocks
+//		  data_log_new_routine();
+		  append_current_datetime_to_array(data_log, num_samples*10, 56);
+	  }
+      HAL_Delay(2000);
+    }
 
 	printf("all done\r\n");
+	if(sdcard_status == 1)
+	    {
 
-	close_sdcard_file();
+			close_sdcard_file();
 
-	// always do this after testing is done so if power is cut, no data is lost
-	unmount_sdcard();
+			// always do this after testing is done so if power is cut, no data is lost
+			unmount_sdcard();
+
+		}
+
+
 
 	//turn_off_5v_plane();
 
@@ -197,7 +219,11 @@ void main_routine(void) {
 	//------------------------- end cycle
 
 	printf("Entering sleep mode, delaying 5 seconds\r\n");
+	printf("busy=%u\r\n", busy_flag_getter());
 	HAL_Delay(5000);
+	busyFlag = 0;
+	i2c_set_busy(0);
+	i2c_set_ready(1);
 }
 
 /* USER CODE END 0 */
@@ -287,28 +313,54 @@ int main(void)
 		//when programming please comment out this suspendtick
 		//else it is going to be a nightmare to load code onto the stm
 		//HAL_SuspendTick();
-		HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
+		if(!is_i2c_cmd_pending())
+		{HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
 		// wake up when there is an interrupt
-		HAL_ResumeTick();
+		HAL_ResumeTick();}
 		uint8_t i2c_flag_main = i2c_flag_getter();
-		switch(i2c_flag_main)
+
+		if (!busy_flag_getter() && is_i2c_cmd_pending())
 		{
-			case I2C_FLAG_SET:
-				busyFlag = 1;
-				main_routine();
-				timer_flag = 0;
-				i2c_flag_reset();
-				busyFlag = 0;
-				break;
-			case I2C_FLAG_READ_DATA:
-				busyFlag = 1;
-				printf("loading buffer\r\n");
-				load_buf();
-				i2c_flag_reset();
-				busyFlag = 0;
-				break;
-			case I2C_FLAG_RESET:
-				break;
+			if (is_i2c_reinit_needed && !busy_flag_getter()) {
+				is_i2c_reinit_needed = 0;
+			    HAL_I2C_DeInit(&hi2c1);
+			    MX_I2C1_Init();
+			    HAL_I2C_EnableListen_IT(&hi2c1);
+			}
+
+			uint8_t current_cmd = dequeue_i2c_cmd();
+			switch(current_cmd)
+			{
+				case I2C_CMD_START:
+					busyFlag = 1;
+					i2c_set_busy(1);
+					i2c_set_ready(0);
+					main_routine();
+					timer_flag = 0;
+					i2c_flag_reset();
+					busyFlag = 0;
+					break;
+				case I2C_CMD_SEND_DATA:
+					busyFlag = 1;
+					printf("loading buffer\r\n");
+					load_buf();
+					i2c_flag_reset();
+					busyFlag = 0;
+					break;
+		        case I2C_CMD_PWRSAV: // turn off the 5V supply for the testing ICs
+		        	turn_off_5v_plane();
+		        	pwr_flag_setter(PWR_SAV);
+		        	HAL_TIM_Base_Stop_IT(&htim2);
+		            break;
+		        case I2C_CMD_PWRNOR:
+		        	turn_on_5v_plane();
+		        	pwr_flag_setter(PWR_NOR);
+		        	HAL_TIM_Base_Start_IT(&htim2);
+		        	break;
+		        case I2C_CMD_RESET:
+		            HAL_NVIC_SystemReset();
+		            break;
+			}
 		}
 		if(timer_flag)
 		{
@@ -832,11 +884,12 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
 		/* User can add his own implementation to report the HAL error return state */
-		__disable_irq();
-		while (1) {
-			printf("Bricked");
-			HAL_Delay(1000);
-		}
+	 NVIC_SystemReset();
+//		__disable_irq();
+//		while (1) {
+//			printf("Bricked");
+//			HAL_Delay(1000);
+//		}
   /* USER CODE END Error_Handler_Debug */
 }
 

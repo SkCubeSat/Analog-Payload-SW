@@ -171,6 +171,10 @@ def main():
 #     time.sleep(1)
 #     
     # Example: 5 rows of 10 fields → a 5×10 matrix
+    
+    #simulate error uncomment below
+    send_data(I2C_CMD_START)
+    
     matrix_5x10,ts = data_request_matrix(I2C_CMD_SEND_DATA, rows=5, cols=10)
     print("5×10 matrix:")
     for row in matrix_5x10:
@@ -178,7 +182,7 @@ def main():
     #print("timestamp")
     #print(ts)
     
-    send_data(I2C_CMD_START)
+    
 
     
 
