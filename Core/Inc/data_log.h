@@ -17,3 +17,4 @@ void data_log_push(uint16_t value);
 void data_log_clear(void);
 uint16_t data_log_count(void);
 void data_log_new_routine(void);
+void append_current_datetime_to_array(uint16_t array[], uint16_t *current_size_ptr, uint16_t max_size);

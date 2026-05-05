@@ -7,6 +7,7 @@
 
 #include "adc.h"
 #include "data_log.h"
+#include "sdcard.h"
 
 extern ADC_HandleTypeDef hadc1;
 extern TIM_HandleTypeDef htim1;

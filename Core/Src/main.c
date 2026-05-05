@@ -193,7 +193,7 @@ void main_routine(void) {
 	  else{
 		  //takes 6 uint16 blocks
 //		  data_log_new_routine();
-		  append_current_datetime_to_array(data_log, num_samples*10, 56);
+      append_current_datetime_to_array(data_log[routine_num], &data_count, PER_ROUTINE_DATA_COUNT);
 	  }
       HAL_Delay(2000);
     }
