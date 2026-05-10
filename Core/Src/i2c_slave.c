@@ -263,6 +263,41 @@ void load_latest_ts_buf(void)
     i2c_set_busy(0); i2c_set_ready(1);
 }
 
+void load_pwr_status_buf(void)
+{
+    i2c_set_busy(1); i2c_set_ready(0);
+
+    uint32_t payload_len = 1;
+    TxBuffer[3] = pwr_flag_getter();
+
+    TxBuffer[1] = (uint8_t)(payload_len & 0xFF);
+    TxBuffer[2] = (uint8_t)((payload_len >> 8) & 0xFF);
+    buf_size = payload_len + 3;
+
+    i2c_set_busy(0); i2c_set_ready(1);
+}
+
+/*
+// Generic payload builder for future use:
+void load_generic_payload(const uint8_t *payload, uint16_t length)
+{
+    i2c_set_busy(1); i2c_set_ready(0);
+
+    if (length > (TxSIZE - 3)) {
+        i2c_set_error(1); i2c_set_busy(0);
+        return;
+    }
+
+    memcpy(&TxBuffer[3], payload, length);
+
+    TxBuffer[1] = (uint8_t)(length & 0xFF);
+    TxBuffer[2] = (uint8_t)((length >> 8) & 0xFF);
+    buf_size = length + 3;
+
+    i2c_set_busy(0); i2c_set_ready(1);
+}
+*/
+
 uint8_t get_latest_s_file(char *outName, size_t outSize) {
     DIR dir;
     FILINFO fno;

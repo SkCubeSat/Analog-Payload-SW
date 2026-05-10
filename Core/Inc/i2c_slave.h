@@ -69,6 +69,8 @@ void pwr_flag_setter(uint8_t flag);
 
 void load_buf();
 void load_latest_ts_buf(void);
+void load_pwr_status_buf(void);
+// void load_generic_payload(const uint8_t *payload, uint16_t length);
 uint8_t get_latest_s_file(char *outName, size_t outSize);
 static void handle_rtc_payload(void);
 static uint32_t parse_csv_rows(uint16_t *values);
