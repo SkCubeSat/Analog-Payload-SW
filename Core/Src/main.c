@@ -364,6 +364,10 @@ int main(void)
 		        	pwr_flag_setter(PWR_NOR);
 		        	HAL_TIM_Base_Start_IT(&htim2);
 		        	break;
+		        case I2C_CMD_PWR_STATUS:
+		        	printf("Power status: %u\r\n", pwr_flag_getter());
+		        	// TODO: To send this over I2C, prepare a TX buffer like load_buf() or load_latest_ts_buf()
+		        	break;
 		        case I2C_CMD_RESET:
 		            HAL_NVIC_SystemReset();
 		            break;

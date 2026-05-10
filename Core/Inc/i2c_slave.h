@@ -45,6 +45,7 @@
 #define I2C_CMD_PWRNOR 102 // Normal power mode
 #define I2C_CMD_SET_RTC 103
 #define I2C_CMD_CHECK_LATEST_TS 104
+#define I2C_CMD_PWR_STATUS 105
 
 // TODO: add read commands
 #define I2C_CMD_SEND_DATA   197
