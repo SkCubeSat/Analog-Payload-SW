@@ -347,6 +347,13 @@ int main(void)
 					i2c_flag_reset();
 					busyFlag = 0;
 					break;
+				case I2C_CMD_CHECK_LATEST_TS:
+					busyFlag = 1;
+					printf("loading latest TS\r\n");
+					load_latest_ts_buf();
+					i2c_flag_reset();
+					busyFlag = 0;
+					break;
 		        case I2C_CMD_PWRSAV: // turn off the 5V supply for the testing ICs
 		        	turn_off_5v_plane();
 		        	pwr_flag_setter(PWR_SAV);
