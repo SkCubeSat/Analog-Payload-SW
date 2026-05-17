@@ -19,8 +19,10 @@ I2C_CMD_RESET   = 97 # Reset the payload board
 I2C_CMD_STOP    = 98 # Stop all routines on the payload board 
 I2C_CMD_START   = 99 # Forced start of single testing routine
 I2C_CMD_NORMAL = 100 # read sensors, write to sd card
-I2C_CMD_PWRSAV = 101 # Power saving mode, no routines till OBC says normal mode. 
+I2C_CMD_PWRSAV = 101 # Power saving mode, no routines till OBC says normal mode.
 I2C_CMD_PWRNOR = 102 # Normal power mode
+I2C_CMD_CHECK_LATEST_TS = 104 # latest S_*.CSV FAT timestamp
+I2C_CMD_PWR_STATUS      = 105 # current power flag
 
 I2C_CMD_SEND_DATA  = 197
 I2C_CMD_SEND_ERROR = 198
@@ -106,17 +108,19 @@ def data_request(command, read_length):
 #         matrix.append(vals[start:start + cols])
 #     return matrix
 
-def data_request_matrix(command, rows, cols):
+def data_request_matrix(command, rows, cols, offset=0):
     """
     Send `command`, read back rows*cols 16-bit values plus a 24-byte ASCII timestamp,
     unpack into a matrix and print both the matrix and timestamp.
+
+    `offset` is the which-file byte: 0 = latest S_*.CSV, 1 = the one before, etc.
     """
     data_bytes = rows * cols * 2
     ts_bytes   = 24                # length of "TS:YYYY-MM-DD hh:mm:ss\r\n"
     total      = data_bytes + ts_bytes
 
-    # 1) send the command
-    i2c.writeto(SLAVE_ADDR, bytes([command]))
+    # 1) send the command + which-file byte (slave expects both bytes)
+    i2c.writeto(SLAVE_ADDR, bytes([command, offset]))
     time.sleep_ms(500)  # allow STM32 to prepare
 
     # 2) read exactly that many bytes
@@ -147,6 +151,36 @@ def data_request_matrix(command, rows, cols):
 
     return matrix, timestamp
 
+def test_pwr_status():
+    """
+    Send I2C_CMD_PWR_STATUS and print the reported power flag.
+    Reply layout: [STATUS][LEN_L][LEN_H][flag]  (flag: 0 = NORMAL, 1 = SAVING)
+    """
+    i2c.writeto(SLAVE_ADDR, bytes([I2C_CMD_PWR_STATUS]))
+    time.sleep_ms(50)
+    raw = i2c.readfrom(SLAVE_ADDR, 4)
+    flag = raw[3]
+    print("PWR status: raw=", bytes(raw),
+          "-> flag=%d (%s)" % (flag, "SAVING" if flag else "NORMAL"))
+    return flag
+
+
+def test_latest_ts():
+    """
+    Send I2C_CMD_CHECK_LATEST_TS and print the latest file's timestamp.
+    Reply layout: [STATUS][LEN_L][LEN_H][6 x uint16 LE: y,mo,d,h,mi,s]
+    """
+    i2c.writeto(SLAVE_ADDR, bytes([I2C_CMD_CHECK_LATEST_TS]))
+    time.sleep_ms(500)  # SD mount + f_stat
+    raw = i2c.readfrom(SLAVE_ADDR, 3 + 12)
+    if raw[0] & 0x04:  # error bit -> no SD card / no S_*.CSV
+        print("Latest TS: slave reported error (no SD card or no S_*.CSV)")
+        return None
+    ts = [raw[3 + i] | (raw[3 + i + 1] << 8) for i in range(0, 12, 2)]
+    print("Latest file TS: %04d-%02d-%02d %02d:%02d:%02d" % tuple(ts))
+    return ts
+
+
 def main():
     """
     Main function to test sending commands and receiving data.
@@ -175,12 +209,19 @@ def main():
     #simulate error uncomment below
     send_data(I2C_CMD_START)
     
-    matrix_5x10,ts = data_request_matrix(I2C_CMD_SEND_DATA, rows=5, cols=10)
+    matrix_5x10,ts = data_request_matrix(I2C_CMD_SEND_DATA, rows=5, cols=10, offset=0)
     print("5×10 matrix:")
     for row in matrix_5x10:
         print(row)
     #print("timestamp")
     #print(ts)
+
+    # --- separate tests for the new commands ---
+    print("\nPower status test:")
+    test_pwr_status()
+
+    print("\nLatest timestamp test:")
+    test_latest_ts()
     
     
 
