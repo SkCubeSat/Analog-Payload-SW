@@ -21,7 +21,7 @@ I2C_CMD_START   = 99 # Forced start of single testing routine
 I2C_CMD_NORMAL = 100 # read sensors, write to sd card
 I2C_CMD_PWRSAV = 101 # Power saving mode, no routines till OBC says normal mode.
 I2C_CMD_PWRNOR = 102 # Normal power mode
-I2C_CMD_CHECK_LATEST_TS = 104 # latest S_*.CSV FAT timestamp
+I2C_CMD_CHECK_LATEST_TS = 106 # latest S_*.CSV FAT timestamp
 I2C_CMD_PWR_STATUS      = 105 # current power flag
 
 I2C_CMD_SEND_DATA  = 197
