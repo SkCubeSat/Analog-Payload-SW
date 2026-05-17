@@ -189,50 +189,42 @@ def main():
     Main function to test sending commands and receiving data.
     """
     print("Testing STM32 communication...")
-    print(i2c.scan())
 
-#     # Request error logs
-#     print("\nRequesting ERROR logs from STM32:")
-#     error_logs = request_data(I2C_CMD_SEND_ERROR, READ_LENGTH)
-#     # You might process or print error_logs further here.
-#     time.sleep(1)
+    # # Request error logs
+    # print("\nRequesting ERROR logs from STM32:")
+    # error_logs = request_data(I2C_CMD_SEND_ERROR, READ_LENGTH)
+    # # You might process or print error_logs further here.
+    # time.sleep(1)
 
-    #send_data(I2C_CMD_START)
-    
-#     time.sleep(1)
-
-    # Request SD card data
-#     print("\nRequesting SD DATA from STM32:")
-#     sd_data = data_request(I2C_CMD_SEND_DATA, READ_LENGTH)
-#     # Additional processing of sd_data can be done here.
-#     
-#     time.sleep(1)
-#     
-    # Example: 5 rows of 10 fields → a 5×10 matrix
-    
-    #simulate error uncomment below
     # send_data(I2C_CMD_START)
     
-    # matrix_5x10,ts = data_request_matrix(I2C_CMD_SEND_DATA, rows=5, cols=10, offset=0)
-    # print("5×10 matrix:")
-    # for row in matrix_5x10:
-    #     print(row)
-    #print("timestamp")
-    #print(ts)
+    # time.sleep(1)
+
+    # # Request SD card data
+    # print("\nRequesting SD DATA from STM32:")
+    # sd_data = data_request(I2C_CMD_SEND_DATA, READ_LENGTH)
+    # # Additional processing of sd_data can be done here.
+    
+    # time.sleep(1)
+    
+    # Example: 5 rows of 10 fields → a 5×10 matrix
+    
+    # simulate error uncomment below
+    send_data(I2C_CMD_START)
+    
+    matrix_5x10,ts = data_request_matrix(I2C_CMD_SEND_DATA, rows=5, cols=10, offset=0)
+    print("5x10 matrix:")
+    for row in matrix_5x10:
+        print(row)
+    # print("timestamp")
+    # print(ts)
 
     # --- separate tests for the new commands ---
     print("\nPower status test:")
     test_pwr_status()
 
-    # print("\nLatest timestamp test:")
-    # test_latest_ts()
-    
-    
-
-    
-
-    
-    
+    print("\nLatest timestamp test:")
+    test_latest_ts()
 
 if __name__ == '__main__':
     main()
