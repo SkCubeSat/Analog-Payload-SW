@@ -44,6 +44,7 @@
 #define I2C_CMD_PWRSAV 101 // Power saving mode, no routines till OBC says normal mode. 
 #define I2C_CMD_PWRNOR 102 // Normal power mode
 #define I2C_CMD_SET_RTC 103
+#define I2C_CMD_GET_RTC 104 // Read current RTC date+time from payload board
 
 // TODO: add read commands
 #define I2C_CMD_SEND_DATA   197
@@ -66,6 +67,7 @@ uint8_t pwr_flag_getter();
 void pwr_flag_setter(uint8_t flag);
 
 void load_buf();
+void load_rtc_buf(void);
 uint8_t get_latest_s_file(char *outName, size_t outSize);
 static void handle_rtc_payload(void);
 static uint32_t parse_csv_rows(uint16_t *values);

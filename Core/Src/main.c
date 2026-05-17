@@ -357,6 +357,13 @@ int main(void)
 		        	pwr_flag_setter(PWR_NOR);
 		        	HAL_TIM_Base_Start_IT(&htim2);
 		        	break;
+		        case I2C_CMD_GET_RTC:
+		        	busyFlag = 1;
+		        	printf("loading RTC buffer\r\n");
+		        	load_rtc_buf();
+		        	i2c_flag_reset();
+		        	busyFlag = 0;
+		        	break;
 		        case I2C_CMD_RESET:
 		            HAL_NVIC_SystemReset();
 		            break;

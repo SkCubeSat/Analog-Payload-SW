@@ -91,6 +91,55 @@ void pwr_flag_setter(uint8_t flag)
 }
 
 
+//---------------------rtc read-back buffer------------------------------------------
+// Packs the current RTC time into TxBuffer using the same wire format as data:
+//   [STATUS][LEN_L][LEN_H][year_hi][year_lo][month][day][weekday][hour][min][sec]
+// Payload is always 8 bytes (matching the SET_RTC layout) so master can use the
+// same decoder it already has for the RTC set command.
+void load_rtc_buf(void)
+{
+    RTC_TimeTypeDef sTime = {0};
+    RTC_DateTypeDef sDate = {0};
+
+    i2c_set_busy(1);
+    i2c_set_ready(0);
+    i2c_set_error(0);
+
+    if (HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN) != HAL_OK ||
+        HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN) != HAL_OK) {
+        printf("load_rtc_buf: HAL_RTC_Get failed\r\n");
+        i2c_set_error(1);
+        i2c_set_busy(0);
+        return;
+    }
+
+    uint16_t year = 2000u + sDate.Year;  /* stored as offset from 2000 */
+
+    /* Payload (8 bytes) at TxBuffer[3..10] */
+    TxBuffer[3]  = (uint8_t)(year >> 8);
+    TxBuffer[4]  = (uint8_t)(year & 0xFF);
+    TxBuffer[5]  = sDate.Month;
+    TxBuffer[6]  = sDate.Date;
+    TxBuffer[7]  = sDate.WeekDay;
+    TxBuffer[8]  = sTime.Hours;
+    TxBuffer[9]  = sTime.Minutes;
+    TxBuffer[10] = sTime.Seconds;
+
+    /* Header */
+    /* TxBuffer[0] = status_byte  — written fresh in AddrCallback */
+    TxBuffer[1] = RTC_PAYLOAD_LEN;       /* len_l = 8 */
+    TxBuffer[2] = 0;                      /* len_h = 0 */
+    buf_size    = 3 + RTC_PAYLOAD_LEN;   /* 11 bytes total */
+
+    printf("load_rtc_buf: 20%02u-%02u-%02u %02u:%02u:%02u buf_size=%u\r\n",
+           sDate.Year, sDate.Month, sDate.Date,
+           sTime.Hours, sTime.Minutes, sTime.Seconds,
+           (unsigned)buf_size);
+
+    i2c_set_busy(0);
+    i2c_set_ready(1);
+}
+
 //---------------------tx buffer loading functions---------------------------------------
 //TODO this function only reads the data files. To read the error logs we need a different function
 //TODO add time stamps to the files(when SD card failes i.e. sd_status=0)

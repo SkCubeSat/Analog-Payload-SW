@@ -22,6 +22,7 @@ I2C_CMD_NORMAL = 100 # read sensors, write to sd card
 I2C_CMD_PWRSAV = 101 # Power saving mode, no routines till OBC says normal mode. 
 I2C_CMD_PWRNOR = 102 # Normal power mode
 
+I2C_CMD_GET_RTC    = 104
 I2C_CMD_SEND_DATA  = 197
 I2C_CMD_SEND_ERROR = 198
 
@@ -29,6 +30,42 @@ I2C_CMD_SEND_ERROR = 198
 READ_LENGTH = 106
 
 # --- Function Definitions ---
+
+def request_rtc():
+    """
+    Send GET_RTC command and decode the 8-byte RTC payload.
+    Wire format: [STATUS][LEN_L][LEN_H][year_hi][year_lo][month][day][weekday][hour][min][sec]
+    Returns a dict with the decoded fields, or None on error.
+    """
+    i2c.writeto(SLAVE_ADDR, bytes([I2C_CMD_GET_RTC]))
+    time.sleep_ms(50)           # RTC read is instant; short delay is enough
+    raw = i2c.readfrom(SLAVE_ADDR, 3 + 8)   # 3-byte header + 8-byte payload
+    status  = raw[0]
+    pay_len = raw[1] | (raw[2] << 8)
+    if pay_len != 8:
+        print("request_rtc: unexpected payload length", pay_len)
+        return None
+    p = raw[3:]
+    year    = (p[0] << 8) | p[1]
+    month   = p[2]
+    day     = p[3]
+    weekday = p[4]
+    hour    = p[5]
+    minute  = p[6]
+    second  = p[7]
+    result = {
+        "status":  status,
+        "year":    year,
+        "month":   month,
+        "day":     day,
+        "weekday": weekday,
+        "hour":    hour,
+        "minute":  minute,
+        "second":  second,
+    }
+    print("RTC: {:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d} (weekday={}) status=0x{:02X}".format(
+          year, month, day, hour, minute, second, weekday, status))
+    return result
 
 def send_data(command):
     try:
