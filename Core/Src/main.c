@@ -193,7 +193,7 @@ void main_routine(void) {
 	  else{
 		  //takes 6 uint16 blocks
 //		  data_log_new_routine();
-      append_current_datetime_to_array(data_log[routine_num], &data_count, PER_ROUTINE_DATA_COUNT);
+		  append_current_datetime_to_array(data_log[routine_num], &data_count, PER_ROUTINE_DATA_COUNT);
 	  }
       HAL_Delay(2000);
     }
@@ -347,6 +347,13 @@ int main(void)
 					i2c_flag_reset();
 					busyFlag = 0;
 					break;
+				case I2C_CMD_CHECK_LATEST_TS:
+					busyFlag = 1;
+					printf("loading latest TS\r\n");
+					load_latest_ts_buf();
+					i2c_flag_reset();
+					busyFlag = 0;
+					break;
 		        case I2C_CMD_PWRSAV: // turn off the 5V supply for the testing ICs
 		        	turn_off_5v_plane();
 		        	pwr_flag_setter(PWR_SAV);
@@ -356,6 +363,18 @@ int main(void)
 		        	turn_on_5v_plane();
 		        	pwr_flag_setter(PWR_NOR);
 		        	HAL_TIM_Base_Start_IT(&htim2);
+		        	break;
+		        case I2C_CMD_PWR_STATUS:
+		        	busyFlag = 1;
+		        	printf("Power status: %u\r\n", pwr_flag_getter());
+		        	load_pwr_status_buf();
+		        	/*
+		        	// Example of generic use for the future:
+		        	// uint8_t pwr = pwr_flag_getter();
+		        	// load_generic_payload(&pwr, 1);
+		        	*/
+		        	i2c_flag_reset();
+		        	busyFlag = 0;
 		        	break;
 		        case I2C_CMD_GET_RTC:
 		        	busyFlag = 1;

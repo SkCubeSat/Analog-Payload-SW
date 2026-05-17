@@ -45,6 +45,8 @@
 #define I2C_CMD_PWRNOR 102 // Normal power mode
 #define I2C_CMD_SET_RTC 103
 #define I2C_CMD_GET_RTC 104 // Read current RTC date+time from payload board
+#define I2C_CMD_PWR_STATUS 105
+#define I2C_CMD_CHECK_LATEST_TS 106
 
 // TODO: add read commands
 #define I2C_CMD_SEND_DATA   197
@@ -68,6 +70,9 @@ void pwr_flag_setter(uint8_t flag);
 
 void load_buf();
 void load_rtc_buf(void);
+void load_latest_ts_buf(void);
+void load_pwr_status_buf(void);
+// void load_generic_payload(const uint8_t *payload, uint16_t length);
 uint8_t get_latest_s_file(char *outName, size_t outSize);
 static void handle_rtc_payload(void);
 static uint32_t parse_csv_rows(uint16_t *values);

@@ -23,6 +23,8 @@ static volatile uint8_t pwr_flag = PWR_NOR;
 //Check whether the transmit buffer is empty
 static volatile uint8_t tx_buf_empty_flag = BUF_NOT_EMPTY;
 static volatile uint8_t awaitingRTC = false;
+static volatile uint8_t awaiting_file_byte = 0; // tells the ISR that SEND_DATA was received and it must wait for one more byte
+static uint8_t requested_file_offset = 0; // 0 = latest file, 1 = one before last, etc.
 
 extern I2C_HandleTypeDef hi2c1;
 extern TIM_HandleTypeDef htim2;
@@ -273,6 +275,78 @@ void load_buf(void)
 
 
 
+void load_latest_ts_buf(void)
+{
+    char filename[LATEST_NAME_MAX];
+    i2c_set_busy(1); i2c_set_ready(0);
+
+    uint8_t sd = mount_sdcard();
+    if (!sd || !get_latest_s_file(filename, sizeof(filename))) {
+        i2c_set_error(1); i2c_set_busy(0); return;
+    }
+
+    FILINFO finfo;
+    f_stat(filename, &finfo);
+    unmount_sdcard();
+
+    uint16_t ts[6] = {
+        ((finfo.fdate >> 9) & 0x7F) + 1932,  // year
+        (finfo.fdate >> 5) & 0x0F,            // month
+        finfo.fdate & 0x1F,                   // day
+        (finfo.ftime >> 11) & 0x1F,           // hour
+        (finfo.ftime >> 5) & 0x3F,            // minute
+        (finfo.ftime & 0x1F) * 2              // second
+    };
+
+    uint32_t offset = 0;
+    for (int i = 0; i < 6; i++) {
+        TxBuffer[3 + offset++] = (uint8_t)(ts[i] & 0xFF);
+        TxBuffer[3 + offset++] = (uint8_t)(ts[i] >> 8);
+    }
+
+    uint32_t payload_len = offset;
+    TxBuffer[1] = (uint8_t)(payload_len & 0xFF);
+    TxBuffer[2] = (uint8_t)((payload_len >> 8) & 0xFF);
+    buf_size = payload_len + 3;
+
+    i2c_set_busy(0); i2c_set_ready(1);
+}
+
+void load_pwr_status_buf(void)
+{
+    i2c_set_busy(1); i2c_set_ready(0);
+
+    uint32_t payload_len = 1;
+    TxBuffer[3] = pwr_flag_getter();
+
+    TxBuffer[1] = (uint8_t)(payload_len & 0xFF);
+    TxBuffer[2] = (uint8_t)((payload_len >> 8) & 0xFF);
+    buf_size = payload_len + 3;
+
+    i2c_set_busy(0); i2c_set_ready(1);
+}
+
+/*
+// Generic payload builder for future use:
+void load_generic_payload(const uint8_t *payload, uint16_t length)
+{
+    i2c_set_busy(1); i2c_set_ready(0);
+
+    if (length > (TxSIZE - 3)) {
+        i2c_set_error(1); i2c_set_busy(0);
+        return;
+    }
+
+    memcpy(&TxBuffer[3], payload, length);
+
+    TxBuffer[1] = (uint8_t)(length & 0xFF);
+    TxBuffer[2] = (uint8_t)((length >> 8) & 0xFF);
+    buf_size = length + 3;
+
+    i2c_set_busy(0); i2c_set_ready(1);
+}
+*/
+
 uint8_t get_latest_s_file(char *outName, size_t outSize) {
     DIR dir;
     FILINFO fno;
@@ -308,7 +382,7 @@ uint8_t get_latest_s_file(char *outName, size_t outSize) {
         return false;
     }
     // Build the filename into outName
-    snprintf(outName, outSize, "S_%u.CSV", maxIdx);
+    snprintf(outName, outSize, "S_%u.CSV", maxIdx - requested_file_offset);
     return true;
 }
 
@@ -523,7 +597,19 @@ void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c)
         	    HAL_I2C_EnableListen_IT(hi2c);
         	    return;
         	}
-            enqueue_i2c_cmd(RxData[0]);
+            if (awaiting_file_byte) {
+                // Which File Byte following I2C_CMD_SEND_DATA
+                awaiting_file_byte = 0;
+                requested_file_offset = RxData[0];  // 0 = latest, 1 = one before, etc.
+                enqueue_i2c_cmd(I2C_CMD_SEND_DATA);
+            } else if (RxData[0] == I2C_CMD_SEND_DATA) {
+                // Expect one more byte (Which File Byte) before acting
+                awaiting_file_byte = 1;
+                HAL_I2C_Slave_Seq_Receive_IT(hi2c, RxData, 1, I2C_NEXT_FRAME);
+                return;
+            } else {
+                enqueue_i2c_cmd(RxData[0]);
+            }
             HAL_I2C_EnableListen_IT(hi2c);
         }
     }
