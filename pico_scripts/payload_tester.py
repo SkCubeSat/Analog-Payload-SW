@@ -153,15 +153,18 @@ def data_request_matrix(command, rows, cols, offset=0):
 
 def test_pwr_status():
     """
-    Send I2C_CMD_PWR_STATUS and print the reported power flag.
-    Reply layout: [STATUS][LEN_L][LEN_H][flag]  (flag: 0 = NORMAL, 1 = SAVING)
+    Ask the board for its power flag and print it (0 = NORMAL, 1 = SAVING).
+    Reply is [STATUS][LEN_L][LEN_H][flag], so the flag is the 4th byte.
     """
-    i2c.writeto(SLAVE_ADDR, bytes([I2C_CMD_PWR_STATUS]))
-    time.sleep_ms(50)
-    raw = i2c.readfrom(SLAVE_ADDR, 4)
-    flag = raw[3]
-    print("PWR status: raw=", bytes(raw),
-          "-> flag=%d (%s)" % (flag, "SAVING" if flag else "NORMAL"))
+    try:
+        i2c.writeto(SLAVE_ADDR, bytes([I2C_CMD_PWR_STATUS]))  # ask
+        time.sleep_ms(50)
+        reply = i2c.readfrom(SLAVE_ADDR, 4)                    # read answer
+    except OSError as e:
+        print("Power status: no reply (", e, ") - board flashed/wired?")
+        return None
+    flag = reply[3]
+    print("Power status =", flag, "(SAVING)" if flag else "(NORMAL)")
     return flag
 
 
@@ -186,6 +189,7 @@ def main():
     Main function to test sending commands and receiving data.
     """
     print("Testing STM32 communication...")
+    print(i2c.scan())
 
 #     # Request error logs
 #     print("\nRequesting ERROR logs from STM32:")
@@ -207,12 +211,12 @@ def main():
     # Example: 5 rows of 10 fields → a 5×10 matrix
     
     #simulate error uncomment below
-    send_data(I2C_CMD_START)
+    # send_data(I2C_CMD_START)
     
-    matrix_5x10,ts = data_request_matrix(I2C_CMD_SEND_DATA, rows=5, cols=10, offset=0)
-    print("5×10 matrix:")
-    for row in matrix_5x10:
-        print(row)
+    # matrix_5x10,ts = data_request_matrix(I2C_CMD_SEND_DATA, rows=5, cols=10, offset=0)
+    # print("5×10 matrix:")
+    # for row in matrix_5x10:
+    #     print(row)
     #print("timestamp")
     #print(ts)
 
@@ -220,8 +224,8 @@ def main():
     print("\nPower status test:")
     test_pwr_status()
 
-    print("\nLatest timestamp test:")
-    test_latest_ts()
+    # print("\nLatest timestamp test:")
+    # test_latest_ts()
     
     
 
