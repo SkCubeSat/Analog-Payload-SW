@@ -156,7 +156,7 @@ void load_buf(void)
 {
 	printf("load_buf function: load buffer function");
     char     filename[LATEST_NAME_MAX];
-    uint16_t values[MAX_VALUES];
+    uint16_t values[PER_ROUTINE_DATA_COUNT];
     uint32_t valCount = 0;
     uint32_t offset   = 0;   // payload write index (no header yet)
     uint32_t payload_len;
@@ -225,8 +225,11 @@ void load_buf(void)
             i2c_set_busy(0);
             return;
         }
-        memcpy(values, data_log[routine_num], data_count * sizeof(uint16_t));
-        valCount = data_count;  // Set valCount so pack_values works correctly
+        uint32_t copy_count = (data_count > PER_ROUTINE_DATA_COUNT) ? PER_ROUTINE_DATA_COUNT : data_count;
+        memcpy(values, data_log[routine_num], copy_count * sizeof(uint16_t));
+        valCount = copy_count;
+        // valCount = data_count;  // Set valCount so pack_values works correctly
+        // memcpy(values, data_log[routine_num], data_count * sizeof(uint16_t));
         printf("\nvalCount: %u", data_count);
     }
 
