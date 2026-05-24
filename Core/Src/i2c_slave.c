@@ -211,13 +211,23 @@ void load_buf(void)
     	    }
     }
 
+    // else {
+    // 	//use buffer instead of SDcard
+    // 	memcpy(values, data_log[routine_num], data_count * sizeof(uint16_t));
+    // 	valCount = data_count;  // Set valCount so pack_values works correctly
+    // 	printf("\nvalCount: %u", data_count);
+    // }
     else {
-    	//use buffer instead of SDcard
-    	memcpy(values, data_log[routine_num], data_count * sizeof(uint16_t));
-    	valCount = data_count;  // Set valCount so pack_values works correctly
-    	printf("\nvalCount: %u", data_count);
-
-
+        //use buffer instead of SDcard
+        if (data_count == 0) {
+            printf("\nload_buf: no data in RAM (routine never ran?)\r\n");
+            i2c_set_error(1);
+            i2c_set_busy(0);
+            return;
+        }
+        memcpy(values, data_log[routine_num], data_count * sizeof(uint16_t));
+        valCount = data_count;  // Set valCount so pack_values works correctly
+        printf("\nvalCount: %u", data_count);
     }
 
 

@@ -143,6 +143,7 @@ void turn_off_PWM_gen(void) {
 
 void main_routine(void) {
 	busyFlag = 1;
+  data_log_new_routine(); // advance to next slot and zero data_count
 	printf("fully initialized, +5V devices off, delaying 5 seconds\r\n");
 	HAL_Delay(5000);
 
@@ -187,15 +188,25 @@ void main_routine(void) {
       preform_opto_measurement_log_to_sd(sdcard_status);
       printf("------------------------------\r\n");
 
-      // new row
-	  if(sdcard_status == 1)
+    // // new row
+	  // if(sdcard_status == 1)
+		//   write_sdcard_file("\r\n");
+	  // else{
+		//   //takes 6 uint16 blocks
+		//   append_current_datetime_to_array(data_log[routine_num], &data_count, PER_ROUTINE_DATA_COUNT);
+	  // }
+    //   HAL_Delay(2000);
+    // }
+
+    // new row separator only matters for the CSV path
+	  if(sdcard_status == 1) {
 		  write_sdcard_file("\r\n");
-	  else{
-		  //takes 6 uint16 blocks
-//		  data_log_new_routine();
-		  append_current_datetime_to_array(data_log[routine_num], &data_count, PER_ROUTINE_DATA_COUNT);
 	  }
       HAL_Delay(2000);
+    }
+    // After all rows, append one timestamp to the RAM log (6 uint16 blocks)
+    if (sdcard_status == 0) {
+        append_current_datetime_to_array(data_log[routine_num], &data_count, PER_ROUTINE_DATA_COUNT);
     }
 
 	printf("all done\r\n");

@@ -328,6 +328,7 @@ inline DSTATUS USER_SPI_initialize (
 	if (Stat & STA_NODISK) return Stat;	/* Is card existing in the soket? */
 
 	FCLK_SLOW();
+	CS_HIGH();								/* CS must be set HIGH during power-up dummy clocks*/
 	for (n = 10; n; n--) xchg_spi(0xFF);	/* Send 80 dummy clocks */
 
 	ty = 0;
