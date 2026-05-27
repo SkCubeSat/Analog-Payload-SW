@@ -145,46 +145,69 @@ def data_request(command, read_length):
 #         matrix.append(vals[start:start + cols])
 #     return matrix
 
-def data_request_matrix(command, rows, cols, offset=0):
+def data_request_matrix(command, rows, cols, offset=0, expect_ascii_ts=False):
     """
-    Send `command`, read back rows*cols 16-bit values plus a 24-byte ASCII timestamp,
-    unpack into a matrix and print both the matrix and timestamp.
+    Send `command` (+offset byte), then do ONE I2C read transaction.
+    STM32 restarts TX at byte 0 for each read transaction, so splitting
+    header/payload into two reads misaligns bytes.
 
-    `offset` is the which-file byte: 0 = latest S_*.CSV, 1 = the one before, etc.
+    Layout expected:
+      [status][len_l][len_h][payload...]
+
+    - no-SD payload: rows*cols uint16 + 6 uint16 timestamp (12 bytes)
+    - SD payload: rows*cols uint16 + ASCII timestamp (about 24 bytes)
     """
-    data_bytes = rows * cols * 2
-    ts_bytes   = 24                # length of "TS:YYYY-MM-DD hh:mm:ss\r\n"
-    total      = data_bytes + ts_bytes
+    data_words = rows * cols
+    data_bytes = data_words * 2
+    ts_bytes = 24 if expect_ascii_ts else 12
+    total_bytes = 3 + data_bytes + ts_bytes
 
-    # 1) send the command + which-file byte (slave expects both bytes)
+    # 1) send command + which-file byte
     i2c.writeto(SLAVE_ADDR, bytes([command, offset]))
-    time.sleep_ms(500)  # allow STM32 to prepare
+    time.sleep_ms(500)
 
-    # 2) read exactly that many bytes
-    raw = i2c.readfrom(SLAVE_ADDR, total)
+    # 2) read full frame in one transaction
+    raw = i2c.readfrom(SLAVE_ADDR, total_bytes)
+    status = raw[0]
+    payload_len = raw[1] | (raw[2] << 8)
+    payload = raw[3:3 + payload_len]
 
-    # 3) split into data vs timestamp
-    data_raw = raw[:data_bytes]
-    ts_raw   = raw[data_bytes:]
+    if payload_len < data_bytes:
+        print("Payload too short:", payload_len, "expected at least", data_bytes)
+        return None, None
 
-    # 4) unpack into list of uint16
-    vals = [data_raw[i] | (data_raw[i+1] << 8)
-            for i in range(0, len(data_raw), 2)]
+    # 4) decode numeric matrix payload
+    data_raw = payload[:data_bytes]
+    vals = [data_raw[i] | (data_raw[i + 1] << 8) for i in range(0, len(data_raw), 2)]
 
-    # 5) reshape into matrix
     matrix = []
     for r in range(rows):
         start = r * cols
         matrix.append(vals[start:start + cols])
 
-    # 6) decode timestamp
-    timestamp = ''.join(chr(b) for b in ts_raw)
+    # 5) decode tail (timestamp) based on length/format
+    tail = payload[data_bytes:]
+    timestamp = ""
 
-    # 7) display
+    if len(tail) == 12:
+        # no-SD timestamp is [year_offset_from_1932, month, day, hour, min, sec]
+        ts = [tail[i] | (tail[i + 1] << 8) for i in range(0, 12, 2)]
+        year_full = 1932 + ts[0]
+        timestamp = "%04d-%02d-%02d %02d:%02d:%02d" % (
+            year_full, ts[1], ts[2], ts[3], ts[4], ts[5]
+        )
+    elif len(tail) > 0:
+        timestamp = ''.join(chr(b) for b in tail).strip()
+
+    # 6) display
+    print("Status: 0x%02X, payload_len=%d" % (status, payload_len))
     print("Received data matrix (%dx%d):" % (rows, cols))
     for row in matrix:
         print("  ", row)
-    print("Timestamp:", timestamp.strip())
+    if timestamp:
+        print("Timestamp:", timestamp)
+    else:
+        print("Timestamp: <none>")
 
     return matrix, timestamp
 

@@ -156,7 +156,7 @@ void load_buf(void)
 {
 	printf("load_buf function: load buffer function");
     char     filename[LATEST_NAME_MAX];
-    uint16_t values[MAX_VALUES];
+    uint16_t values[PER_ROUTINE_DATA_COUNT]; // max count of uint16_t values we expect to read from the file (or data log)
     uint32_t valCount = 0;
     uint32_t offset   = 0;   // payload write index (no header yet)
     uint32_t payload_len;
@@ -172,8 +172,10 @@ void load_buf(void)
         i2c_set_busy(0);
         return;
     }
+    
 
     uint8_t sdcard_status = mount_sdcard();
+    printf("after mount!\r\n");
     //to test remove line below an also in the main.cpp !!
 //    uint8_t sdcard_status = 0;
 
@@ -209,14 +211,39 @@ void load_buf(void)
     	        i2c_set_busy(0);
     	        return;
     	    }
+
+            printf("values SD parse check:");
+            for (uint32_t i = 0; i < valCount; i++) {
+                printf(" %u", values[i]);
+            }
+            printf("\r\n");
     }
 
     else {
+        uint16_t logged_count = data_log_count();
+    	printf("ram buffer used instead\r\n");
+        printf("\nvalCount: %u", logged_count);
+        //printf("\nvalCount: %u", logged_routine);
     	//use buffer instead of SDcard
-    	memcpy(values, data_log[routine_num], data_count * sizeof(uint16_t));
-    	valCount = data_count;  // Set valCount so pack_values works correctly
-    	printf("\nvalCount: %u", data_count);
+        if (logged_count > PER_ROUTINE_DATA_COUNT) {
+            logged_count = PER_ROUTINE_DATA_COUNT;
+        }
 
+        //memcpy(values, data_log[routine_num], data_count * sizeof(uint16_t));
+        //using loop instead of memcpy since data_log is 2D array and we want to copy only the current routine's data
+        for (uint16_t i = 0; i < logged_count; i++) {
+            values[i] = data_log[routine_num][i];
+        }
+
+        printf("values copy check:");
+        for (uint16_t i = 0; i < logged_count; i++) {
+            printf(" %u", values[i]);
+        }
+        printf("\r\n");
+
+        valCount = logged_count;  // Set valCount so pack_values works correctly
+        printf("\nvalCount: %u", logged_count);
+    	printf("here here\r\n");
 
     }
 
@@ -225,6 +252,10 @@ void load_buf(void)
     // 4) Pack numeric values into TxBuffer (temporarily at [0..))
     //    pack_values returns bytes written (valCount*2)
     offset = pack_values(values, valCount, TxBuffer);
+    if (sdcard_status != 1) {
+        printf("no-SD pack done: valCount=%lu bytes=%lu\r\n",
+               (unsigned long)valCount, (unsigned long)offset);
+    }
 
     // 5) Append ASCII timestamp; returns bytes appended
     //    (Write it immediately after packed values)
@@ -258,6 +289,11 @@ void load_buf(void)
 
     // Total bytes available to serve when ready
     buf_size = payload_len + 3;
+
+    if (sdcard_status != 1) {
+        printf("no-SD frame ready: payload=%lu total=%u\r\n",
+               (unsigned long)payload_len, (unsigned)buf_size);
+    }
 
     // 7) Cleanup storage
     if(sdcard_status == 1) {
@@ -566,7 +602,7 @@ void HAL_I2C_SlaveTxCpltCallback(I2C_HandleTypeDef *hi2c)
 	if (hi2c->Instance != I2C1) return;
 
     txCount++;
-    if(txCount < buf_size){
+    if(txCount < tx_total){
     	HAL_I2C_Slave_Seq_Transmit_IT(hi2c, &TxBuffer[txCount], 1, I2C_NEXT_FRAME);
     	//i2c_flag = I2C_FLAG_READ_DATA;
     }

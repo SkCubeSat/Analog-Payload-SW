@@ -1,4 +1,7 @@
 #include "data_log.h"
+#include "main.h"
+
+extern RTC_HandleTypeDef hrtc;
 
 
 uint16_t data_count = 0;          // how many valid entries (0..DATA_LOG_CAPACITY-1)
@@ -49,19 +52,24 @@ typedef struct {
  * @param max_size The total capacity of the array.
  */
 void append_current_datetime_to_array(uint16_t array[], uint16_t *current_size_ptr, uint16_t max_size) {
-    // Get current time using standard C library functions
-    time_t now = time(NULL);
-    struct tm *ptm = localtime(&now);
+    RTC_TimeTypeDef sTime = {0};
+    RTC_DateTypeDef sDate = {0};
 
-    // Calculate the year offset using the 1932 epoch
-    uint16_t year_offset = (uint16_t)(ptm->tm_year + 1900 - 1932);
+    if (HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN) != HAL_OK ||
+        HAL_RTC_GetDate(&hrtc, &sDate, RTC_FORMAT_BIN) != HAL_OK) {
+        printf("Error: RTC read failed, timestamp not appended.\n");
+        return;
+    }
 
-    // Extract remaining components and cast to uint16_t
-    uint16_t month  = (uint16_t)(ptm->tm_mon + 1); // tm_mon is 0-11
-    uint16_t day    = (uint16_t)ptm->tm_mday;
-    uint16_t hour   = (uint16_t)ptm->tm_hour;
-    uint16_t minute = (uint16_t)ptm->tm_min;
-    uint16_t second = (uint16_t)ptm->tm_sec;
+    // STM32 RTC year is offset from 2000.
+    uint16_t year_full = (uint16_t)(2000u + sDate.Year);
+    uint16_t year_offset = (uint16_t)(year_full - 1932u);
+
+    uint16_t month  = (uint16_t)sDate.Month;
+    uint16_t day    = (uint16_t)sDate.Date;
+    uint16_t hour   = (uint16_t)sTime.Hours;
+    uint16_t minute = (uint16_t)sTime.Minutes;
+    uint16_t second = (uint16_t)sTime.Seconds;
 
     // Check if we have enough space for 6 new entries
     if (*current_size_ptr + 6 <= max_size) {
@@ -72,8 +80,8 @@ void append_current_datetime_to_array(uint16_t array[], uint16_t *current_size_p
         array[(*current_size_ptr)++] = minute;
         array[(*current_size_ptr)++] = second;
 
-        printf("Appended Date/Time: Y:%u(offset) M:%u D:%u H:%u M:%u S:%u\n",
-               year_offset, month, day, hour, minute, second);
+         printf("Appended Date/Time: %u-%02u-%02u %02u:%02u:%02u (Y_off=%u)\n",
+             year_full, month, day, hour, minute, second, year_offset);
     } else {
         printf("Error: Not enough space in the array to append full timestamp.\n");
     }

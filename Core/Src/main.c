@@ -171,6 +171,10 @@ void main_routine(void) {
 		write_sdcard_file(
 			"op_noshd_p,op_mel_p,op_al_p,vref_noshd,vref_mel,vref_al,lm35,opto_noshd,opto_mel,opto_al\r\n");
     }
+  else
+    {
+		data_log_new_routine();
+    }
 
     const uint32_t num_samples = 5; // 2sec 450 samples = 15minutes
 
@@ -190,13 +194,12 @@ void main_routine(void) {
       // new row
 	  if(sdcard_status == 1)
 		  write_sdcard_file("\r\n");
-	  else{
-		  //takes 6 uint16 blocks
-//		  data_log_new_routine();
-		  append_current_datetime_to_array(data_log[routine_num], &data_count, PER_ROUTINE_DATA_COUNT);
-	  }
       HAL_Delay(2000);
     }
+
+  if(sdcard_status != 1) {
+    append_current_datetime_to_array(data_log[routine_num], &data_count, PER_ROUTINE_DATA_COUNT);
+  }
 
 	printf("all done\r\n");
 	if(sdcard_status == 1)
