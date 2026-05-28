@@ -257,7 +257,7 @@ void load_buf(void)
                (unsigned long)valCount, (unsigned long)offset);
     }
 
-    // 5) Append ASCII timestamp; returns bytes appended
+    // 5) Append binary timestamp (6x LE uint16); returns bytes appended
     //    (Write it immediately after packed values)
     if(sdcard_status == 1)
     	offset += append_file_timestamp(filename, TxBuffer, offset);
@@ -464,35 +464,37 @@ static uint32_t pack_values(const uint16_t *values, uint32_t count, uint8_t *buf
 }
 
 //------------------------------------------------------------------------------
-// Append ASCII timestamp from file metadata; returns length of appended text
+// Append binary timestamp from file metadata as 6 little-endian uint16
+// (year (full), month, day, hour, minute, second). Returns bytes appended (12 or 0).
+// Layout matches load_latest_ts_buf() so the OBC has a single decoder.
 //------------------------------------------------------------------------------
 static uint32_t append_file_timestamp(const char *filename, uint8_t *buffer, uint32_t offset) {
     FILINFO finfo;
-    char    tsbuf[32];
-    uint32_t len = 0;
 
-    if (f_stat(filename, &finfo) == FR_OK) {
-        uint16_t fdate = finfo.fdate;
-        uint16_t ftime = finfo.ftime;
-        uint16_t year  = ((fdate >> 9) & 0x7F) + 1932;
-        uint8_t  month = (fdate >> 5) & 0x0F;
-        uint8_t  day   = fdate & 0x1F;
-        uint8_t  hour  = (ftime >> 11) & 0x1F;
-        uint8_t  minute= (ftime >> 5) & 0x3F;
-        uint8_t  second= (ftime & 0x1F) * 2;
-
-        int tslen = snprintf(tsbuf, sizeof(tsbuf),
-            "TS:%04u-%02u-%02u %02u:%02u:%02u\r\n",
-            year, month, day, hour, minute, second
-        );
-        if (tslen > 0 && offset + tslen <= TxSIZE) {
-            memcpy(&buffer[offset], tsbuf, tslen);
-            len = tslen;
-        }
-    } else {
+    if (f_stat(filename, &finfo) != FR_OK) {
         printf("f_stat failed (%d)\r\n", (int)fres);
+        return 0;
     }
-    return len;
+
+    uint16_t fdate = finfo.fdate;
+    uint16_t ftime = finfo.ftime;
+    uint16_t ts[6] = {
+        ((fdate >> 9) & 0x7F) + 1932,   // year (full)
+        (fdate >> 5)  & 0x0F,            // month
+         fdate        & 0x1F,            // day
+        (ftime >> 11) & 0x1F,            // hour
+        (ftime >> 5)  & 0x3F,            // minute
+        (ftime        & 0x1F) * 2        // second
+    };
+
+    if (offset + sizeof(ts) > TxSIZE) {
+        return 0;
+    }
+    for (uint32_t i = 0; i < 6; i++) {
+        buffer[offset + i * 2]     = (uint8_t)(ts[i] & 0xFF);
+        buffer[offset + i * 2 + 1] = (uint8_t)(ts[i] >> 8);
+    }
+    return sizeof(ts);   // 12 bytes
 }
 
 //-----------------------cmd processing-----------------------------------

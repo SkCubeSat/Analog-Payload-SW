@@ -145,21 +145,26 @@ def data_request(command, read_length):
 #         matrix.append(vals[start:start + cols])
 #     return matrix
 
-def data_request_matrix(command, rows, cols, offset=0, expect_ascii_ts=False):
+def decode_binary_ts(b12):
+    """Decode 12 bytes -> 'YYYY-MM-DD HH:MM:SS'.
+    Layout: 6 little-endian uint16 = year (full), month, day, hour, min, sec.
+    Same format on every path: SD SEND_DATA, no-SD SEND_DATA, CHECK_LATEST_TS.
+    """
+    ts = [b12[i] | (b12[i + 1] << 8) for i in range(0, 12, 2)]
+    return "%04d-%02d-%02d %02d:%02d:%02d" % tuple(ts)
+
+
+def data_request_matrix(command, rows, cols, offset=0):
     """
     Send `command` (+offset byte), then do ONE I2C read transaction.
     STM32 restarts TX at byte 0 for each read transaction, so splitting
     header/payload into two reads misaligns bytes.
 
-    Layout expected:
-      [status][len_l][len_h][payload...]
-
-    - no-SD payload: rows*cols uint16 + 6 uint16 timestamp (12 bytes)
-    - SD payload: rows*cols uint16 + ASCII timestamp (about 24 bytes)
+    Layout expected (both SD and no-SD paths are now identical):
+      [status][len_l][len_h][ rows*cols uint16 ][ 12-byte binary timestamp ]
     """
-    data_words = rows * cols
-    data_bytes = data_words * 2
-    ts_bytes = 24 if expect_ascii_ts else 12
+    data_bytes = rows * cols * 2
+    ts_bytes = 12
     total_bytes = 3 + data_bytes + ts_bytes
 
     # 1) send command + which-file byte
@@ -176,7 +181,7 @@ def data_request_matrix(command, rows, cols, offset=0, expect_ascii_ts=False):
         print("Payload too short:", payload_len, "expected at least", data_bytes)
         return None, None
 
-    # 4) decode numeric matrix payload
+    # 3) decode numeric matrix payload
     data_raw = payload[:data_bytes]
     vals = [data_raw[i] | (data_raw[i + 1] << 8) for i in range(0, len(data_raw), 2)]
 
@@ -185,21 +190,11 @@ def data_request_matrix(command, rows, cols, offset=0, expect_ascii_ts=False):
         start = r * cols
         matrix.append(vals[start:start + cols])
 
-    # 5) decode tail (timestamp) based on length/format
-    tail = payload[data_bytes:]
-    timestamp = ""
+    # 4) decode 12-byte binary timestamp tail
+    tail = payload[data_bytes:data_bytes + 12]
+    timestamp = decode_binary_ts(tail) if len(tail) == 12 else ""
 
-    if len(tail) == 12:
-        # no-SD timestamp is [year_offset_from_1932, month, day, hour, min, sec]
-        ts = [tail[i] | (tail[i + 1] << 8) for i in range(0, 12, 2)]
-        year_full = 1932 + ts[0]
-        timestamp = "%04d-%02d-%02d %02d:%02d:%02d" % (
-            year_full, ts[1], ts[2], ts[3], ts[4], ts[5]
-        )
-    elif len(tail) > 0:
-        timestamp = ''.join(chr(b) for b in tail).strip()
-
-    # 6) display
+    # 5) display
     print("Status: 0x%02X, payload_len=%d" % (status, payload_len))
     print("Received data matrix (%dx%d):" % (rows, cols))
     for row in matrix:
@@ -239,9 +234,9 @@ def test_latest_ts():
     if raw[0] & 0x04:  # error bit -> no SD card / no S_*.CSV
         print("Latest TS: slave reported error (no SD card or no S_*.CSV)")
         return None
-    ts = [raw[3 + i] | (raw[3 + i + 1] << 8) for i in range(0, 12, 2)]
-    print("Latest file TS: %04d-%02d-%02d %02d:%02d:%02d" % tuple(ts))
-    return ts
+    timestamp = decode_binary_ts(raw[3:3 + 12])
+    print("Latest file TS:", timestamp)
+    return timestamp
 
 
 def main():

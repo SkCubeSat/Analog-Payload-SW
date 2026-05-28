@@ -61,9 +61,9 @@ void append_current_datetime_to_array(uint16_t array[], uint16_t *current_size_p
         return;
     }
 
-    // STM32 RTC year is offset from 2000.
+    // STM32 RTC year is offset from 2000. Store the FULL year so every
+    // timestamp path on the wire uses one format (matches load_latest_ts_buf).
     uint16_t year_full = (uint16_t)(2000u + sDate.Year);
-    uint16_t year_offset = (uint16_t)(year_full - 1932u);
 
     uint16_t month  = (uint16_t)sDate.Month;
     uint16_t day    = (uint16_t)sDate.Date;
@@ -73,15 +73,15 @@ void append_current_datetime_to_array(uint16_t array[], uint16_t *current_size_p
 
     // Check if we have enough space for 6 new entries
     if (*current_size_ptr + 6 <= max_size) {
-        array[(*current_size_ptr)++] = year_offset;
+        array[(*current_size_ptr)++] = year_full;
         array[(*current_size_ptr)++] = month;
         array[(*current_size_ptr)++] = day;
         array[(*current_size_ptr)++] = hour;
         array[(*current_size_ptr)++] = minute;
         array[(*current_size_ptr)++] = second;
 
-         printf("Appended Date/Time: %u-%02u-%02u %02u:%02u:%02u (Y_off=%u)\n",
-             year_full, month, day, hour, minute, second, year_offset);
+         printf("Appended Date/Time: %u-%02u-%02u %02u:%02u:%02u\n",
+             year_full, month, day, hour, minute, second);
     } else {
         printf("Error: Not enough space in the array to append full timestamp.\n");
     }

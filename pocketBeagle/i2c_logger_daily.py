@@ -106,15 +106,17 @@ def read_payload(bus: SMBus, length: int) -> bytes:
     return rdwr_with_retry(bus, SLAVE_ADDR, [CMD_SEND], length)
 
 # ----- Payload parsing -----
+TS_BYTES_BIN = 12  # 6 little-endian uint16: year(full), month, day, hour, minute, second
+
 def split_payload(payload: bytes) -> tuple[list[int], str]:
     """
     Interpret payload as:
       - first ROWS*COLS*2 bytes -> little-endian uint16 values
-      - remaining bytes -> ASCII timestamp (strip \0/\r/\n/space)
-    If payload shorter/longer than expected, handle gracefully.
+      - next 12 bytes           -> 6 little-endian uint16 timestamp
+    Same binary timestamp format on both SD and no-SD paths.
     """
     data_part = payload[:DATA_BYTES_EXPECTED]
-    ts_part   = payload[DATA_BYTES_EXPECTED:]
+    ts_part   = payload[DATA_BYTES_EXPECTED:DATA_BYTES_EXPECTED + TS_BYTES_BIN]
 
     # If the payload is shorter than expected, pad zeros to avoid struct errors.
     if len(data_part) < DATA_BYTES_EXPECTED:
@@ -123,25 +125,12 @@ def split_payload(payload: bytes) -> tuple[list[int], str]:
     count_vals = DATA_BYTES_EXPECTED // 2
     vals = list(struct.unpack('<' + 'H' * count_vals, data_part))
 
-    # Decode timestamp safely; if empty, make a placeholder
-    if ts_part:
-        try:
-            ts = ts_part.decode('ascii', errors='ignore').strip('\x00\r\n ')
-        except Exception:
-            ts = ''.join(chr(b) if 32 <= b < 127 else '.' for b in ts_part).strip('.')
+    # Decode 12-byte binary timestamp (year is full, e.g. 2026)
+    if len(ts_part) == TS_BYTES_BIN:
+        y, mo, d, h, mi, s = struct.unpack('<HHHHHH', ts_part)
+        ts = "%04d-%02d-%02d %02d:%02d:%02d" % (y, mo, d, h, mi, s)
     else:
         ts = ""
-
-    # If a TS hint length is provided and wildly mismatched, try to trim or recover:
-    if not ts and TS_BYTES and len(payload) >= DATA_BYTES_EXPECTED:
-        # Last resort: look for "TS:" marker
-        tail = payload[DATA_BYTES_EXPECTED:]
-        idx = tail.find(b'TS:')
-        if idx != -1:
-            try:
-                ts = tail[idx:].decode('ascii', errors='ignore').strip('\x00\r\n ')
-            except Exception:
-                pass
 
     return vals, ts
 
