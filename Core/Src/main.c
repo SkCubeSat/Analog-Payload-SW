@@ -152,14 +152,13 @@ void main_routine(void) {
 	printf("+5V device powered, delaying 5 seconds\r\n");
 	HAL_Delay(5000);
 
-	//--------------------------- start cycle
+	//--------------------------- start cycle------------------------//
 
 	uint8_t sdcard_status = mount_sdcard();
-	//test remove line below later
-//	uint8_t sdcard_status = 0;
+
   if(sdcard_status == 1)
-    {
-      	print_sdcard_stats();
+  {
+    print_sdcard_stats();
       
 		// keep the filename as short as possible
 		// e.g. "sample" can only write 10 files before it doesnt want to make anymore
@@ -203,14 +202,12 @@ void main_routine(void) {
 
 	printf("all done\r\n");
 	if(sdcard_status == 1)
-	    {
-
-			close_sdcard_file();
-
-			// always do this after testing is done so if power is cut, no data is lost
-			unmount_sdcard();
-
-		}
+  {
+    close_sdcard_file();
+    
+    // always do this after testing is done so if power is cut, no data is lost
+		unmount_sdcard();
+  }
 
 
 
@@ -357,38 +354,38 @@ int main(void)
 					i2c_flag_reset();
 					busyFlag = 0;
 					break;
-		        case I2C_CMD_PWRSAV: // turn off the 5V supply for the testing ICs
-		        	turn_off_5v_plane();
-		        	pwr_flag_setter(PWR_SAV);
-		        	HAL_TIM_Base_Stop_IT(&htim2);
-		            break;
-		        case I2C_CMD_PWRNOR:
-		        	turn_on_5v_plane();
-		        	pwr_flag_setter(PWR_NOR);
-		        	HAL_TIM_Base_Start_IT(&htim2);
-		        	break;
-		        case I2C_CMD_PWR_STATUS:
-		        	busyFlag = 1;
-		        	printf("Power status: %u\r\n", pwr_flag_getter());
-		        	load_pwr_status_buf();
-		        	/*
-		        	// Example of generic use for the future:
-		        	// uint8_t pwr = pwr_flag_getter();
-		        	// load_generic_payload(&pwr, 1);
-		        	*/
-		        	i2c_flag_reset();
-		        	busyFlag = 0;
-		        	break;
-		        case I2C_CMD_GET_RTC:
-		        	busyFlag = 1;
-		        	printf("loading RTC buffer\r\n");
-		        	load_rtc_buf();
-		        	i2c_flag_reset();
-		        	busyFlag = 0;
-		        	break;
-		        case I2C_CMD_RESET:
-		            HAL_NVIC_SystemReset();
-		            break;
+		    case I2C_CMD_PWRSAV: // turn off the 5V supply for the testing ICs
+		      turn_off_5v_plane();
+		      pwr_flag_setter(PWR_SAV);
+		      HAL_TIM_Base_Stop_IT(&htim2);
+		      break;
+		    case I2C_CMD_PWRNOR:
+		      turn_on_5v_plane();
+		      pwr_flag_setter(PWR_NOR);
+		      HAL_TIM_Base_Start_IT(&htim2);
+		      break;
+		    case I2C_CMD_PWR_STATUS:
+		      busyFlag = 1;
+		      printf("Power status: %u\r\n", pwr_flag_getter());
+		      load_pwr_status_buf();
+		      /*
+		      // Example of generic use for the future:
+		      // uint8_t pwr = pwr_flag_getter();
+		      // load_generic_payload(&pwr, 1);
+		      */
+		      i2c_flag_reset();
+		      busyFlag = 0;
+		      break;
+		    case I2C_CMD_GET_RTC:
+		      busyFlag = 1;
+		      printf("loading RTC buffer\r\n");
+		      load_rtc_buf();
+		      i2c_flag_reset();
+		      busyFlag = 0;
+		      break;
+		    case I2C_CMD_RESET:
+		      HAL_NVIC_SystemReset();
+		      break;
 			}
 		}
 		if(timer_flag)
