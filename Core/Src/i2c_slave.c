@@ -64,6 +64,8 @@ volatile uint8_t is_i2c_reinit_needed = 0;
 static volatile uint8_t status_byte = 0; // stays private here
 static uint8_t status_tx;
 
+static uint8_t load_generic_payload(const uint8_t *payload, uint16_t length);
+
 void i2c_set_busy(uint8_t on)  { if(on) status_byte |= 0x01; else status_byte &= (uint8_t)~0x01; }
 void i2c_set_ready(uint8_t on) { if(on) status_byte |= 0x02; else status_byte &= (uint8_t)~0x02; }
 void i2c_set_error(uint8_t on) { if(on) status_byte |= 0x04; else status_byte &= (uint8_t)~0x04; }
@@ -102,6 +104,7 @@ void load_rtc_buf(void)
 {
     RTC_TimeTypeDef sTime = {0};
     RTC_DateTypeDef sDate = {0};
+    uint8_t payload[RTC_PAYLOAD_LEN];
 
     i2c_set_busy(1);
     i2c_set_ready(0);
@@ -117,21 +120,19 @@ void load_rtc_buf(void)
 
     uint16_t year = 2000u + sDate.Year;  /* stored as offset from 2000 */
 
-    /* Payload (8 bytes) at TxBuffer[3..10] */
-    TxBuffer[3]  = (uint8_t)(year >> 8);
-    TxBuffer[4]  = (uint8_t)(year & 0xFF);
-    TxBuffer[5]  = sDate.Month;
-    TxBuffer[6]  = sDate.Date;
-    TxBuffer[7]  = sDate.WeekDay;
-    TxBuffer[8]  = sTime.Hours;
-    TxBuffer[9]  = sTime.Minutes;
-    TxBuffer[10] = sTime.Seconds;
+    payload[0] = (uint8_t)(year >> 8);
+    payload[1] = (uint8_t)(year & 0xFF);
+    payload[2] = sDate.Month;
+    payload[3] = sDate.Date;
+    payload[4] = sDate.WeekDay;
+    payload[5] = sTime.Hours;
+    payload[6] = sTime.Minutes;
+    payload[7] = sTime.Seconds;
 
-    /* Header */
-    /* TxBuffer[0] = status_byte  — written fresh in AddrCallback */
-    TxBuffer[1] = RTC_PAYLOAD_LEN;       /* len_l = 8 */
-    TxBuffer[2] = 0;                      /* len_h = 0 */
-    buf_size    = 3 + RTC_PAYLOAD_LEN;   /* 11 bytes total */
+    if (!load_generic_payload(payload, RTC_PAYLOAD_LEN)) {
+        i2c_set_busy(0);
+        return;
+    }
 
     printf("load_rtc_buf: 20%02u-%02u-%02u %02u:%02u:%02u buf_size=%u\r\n",
            sDate.Year, sDate.Month, sDate.Date,
@@ -140,6 +141,7 @@ void load_rtc_buf(void)
 
     i2c_set_busy(0);
     i2c_set_ready(1);
+
 }
 
 //---------------------tx buffer loading functions---------------------------------------
@@ -280,15 +282,14 @@ void load_buf(void)
         return;
     }
 
-    // Shift payload up by 3 bytes (safe with memmove)
-    memmove(&TxBuffer[3], &TxBuffer[0], payload_len);
-
-    // Fill LEN (little-endian). STATUS byte (TxBuffer[0]) is set in AddrCallback.
-    TxBuffer[1] = (uint8_t)(payload_len & 0xFF);
-    TxBuffer[2] = (uint8_t)((payload_len >> 8) & 0xFF);
-
-    // Total bytes available to serve when ready
-    buf_size = payload_len + 3;
+    if (!load_generic_payload(TxBuffer, (uint16_t)payload_len)) {
+        if (sdcard_status == 1) {
+            close_sdcard_file();
+            unmount_sdcard();
+        }
+        i2c_set_busy(0);
+        return;
+    }
 
     if (sdcard_status != 1) {
         printf("no-SD frame ready: payload=%lu total=%u\r\n",
@@ -302,11 +303,10 @@ void load_buf(void)
         unmount_sdcard();
     }
 
-
-    // 8) Mark READY (not busy)
     i2c_set_busy(0);
     i2c_set_ready(1);
-    // leave error as is
+
+
 }
 
 
@@ -314,7 +314,8 @@ void load_buf(void)
 void load_latest_ts_buf(void)
 {
     char filename[LATEST_NAME_MAX];
-    i2c_set_busy(1); i2c_set_ready(0);
+    uint8_t payload[12];
+    i2c_set_busy(1); i2c_set_ready(0); i2c_set_error(0);
 
     uint8_t sd = mount_sdcard();
     if (!sd || !get_latest_s_file(filename, sizeof(filename))) {
@@ -336,52 +337,53 @@ void load_latest_ts_buf(void)
 
     uint32_t offset = 0;
     for (int i = 0; i < 6; i++) {
-        TxBuffer[3 + offset++] = (uint8_t)(ts[i] & 0xFF);
-        TxBuffer[3 + offset++] = (uint8_t)(ts[i] >> 8);
+        payload[offset++] = (uint8_t)(ts[i] & 0xFF);
+        payload[offset++] = (uint8_t)(ts[i] >> 8);
     }
 
     uint32_t payload_len = offset;
-    TxBuffer[1] = (uint8_t)(payload_len & 0xFF);
-    TxBuffer[2] = (uint8_t)((payload_len >> 8) & 0xFF);
-    buf_size = payload_len + 3;
+    if (!load_generic_payload(payload, (uint16_t)payload_len)) {
+        i2c_set_busy(0);
+        return;
+    }
 
-    i2c_set_busy(0); i2c_set_ready(1);
+    i2c_set_busy(0);
+    i2c_set_ready(1);
 }
 
 void load_pwr_status_buf(void)
 {
-    i2c_set_busy(1); i2c_set_ready(0);
+    uint8_t payload[1];
+    i2c_set_busy(1); i2c_set_ready(0); i2c_set_error(0);
 
-    uint32_t payload_len = 1;
-    TxBuffer[3] = pwr_flag_getter();
+    payload[0] = pwr_flag_getter();
 
-    TxBuffer[1] = (uint8_t)(payload_len & 0xFF);
-    TxBuffer[2] = (uint8_t)((payload_len >> 8) & 0xFF);
-    buf_size = payload_len + 3;
-
-    i2c_set_busy(0); i2c_set_ready(1);
-}
-
-/*
-// Generic payload builder for future use:
-void load_generic_payload(const uint8_t *payload, uint16_t length)
-{
-    i2c_set_busy(1); i2c_set_ready(0);
-
-    if (length > (TxSIZE - 3)) {
-        i2c_set_error(1); i2c_set_busy(0);
+    if (!load_generic_payload(payload, 1)) {
+        i2c_set_busy(0);
         return;
     }
 
-    memcpy(&TxBuffer[3], payload, length);
+    i2c_set_busy(0);
+    i2c_set_ready(1);
+}
+
+// Generic payload builder only frames payload bytes into TxBuffer.
+static uint8_t load_generic_payload(const uint8_t *payload, uint16_t length)
+{
+    if (length > (TxSIZE - 3)) {
+        i2c_set_error(1);
+        return 0;
+    }
+
+    // memmove handles overlap safely when payload points into TxBuffer itself.
+    memmove(&TxBuffer[3], payload, length);
 
     TxBuffer[1] = (uint8_t)(length & 0xFF);
     TxBuffer[2] = (uint8_t)((length >> 8) & 0xFF);
     buf_size = length + 3;
 
-    i2c_set_busy(0); i2c_set_ready(1);
+    return 1;
 }
-*/
 
 uint8_t get_latest_s_file(char *outName, size_t outSize) {
     DIR dir;
