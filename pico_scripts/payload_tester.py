@@ -1,3 +1,15 @@
+# payload_tester.py
+#
+# Test script for exercising the STM32 analog payload board over I2C.
+# Run this on the Pico to trigger a measurement routine, read back the
+# 5x10 data matrix (5 sample rows, 10 sensor fields each), check the
+# board's power mode, and query the latest SD card file timestamp.
+#
+# Usage:
+#   1. Make sure the STM32 is powered and listening (confirm with i2c_scanner.py).
+#   2. Optionally sync the RTC first with send_rtc_time.py.
+#   3. Run this script; results are printed to the serial console.
+
 import machine
 import time
 
@@ -71,40 +83,12 @@ def request_rtc():
 
 def send_data(command):
     try:
-        # Send the command (write transaction; R/W bit = write)
         i2c.writeto(SLAVE_ADDR, bytes([command]))
         print("Command 0x{:02X} sent.".format(command))
     except Exception as e:
         print("Error writing command: ", e)
         return None
 
-# def request_data(command, read_length):
-#     """
-#     Sends a command to the slave device and then reads back a block of data.
-#     The process:
-#       1. Write the command.
-#       2. Wait for a short delay to allow the slave to prepare data.
-#       3. Read the specified number of bytes.
-#     """
-#     try:
-#         # Send the command (write transaction; R/W bit = write)
-#         i2c.writeto(SLAVE_ADDR, bytes([command]))
-#         print("Command 0x{:02X} sent.".format(command))
-#     except Exception as e:
-#         print("Error writing command: ", e)
-#         return None
-# 
-#     # Allow some time for the slave to process the command and load its buffer.
-#     time.sleep(0.2)  # 100ms delay; adjust depending on your slave processing time.
-# 
-#     try:
-#         # Read data from the slave.
-#         data = i2c.readfrom(SLAVE_ADDR, read_length)
-#         print("Received data:", data)
-#         return data
-#     except Exception as e:
-#         print("Error reading data: ", e)
-#         return None
 
 def data_request(command, read_length):
     """
@@ -122,28 +106,6 @@ def data_request(command, read_length):
     print("Received %d values:" % len(values), values)
     return values
 
-# def data_request_matrix(command, rows, cols):
-#     """
-#     Send `command`, read back rows*cols 16-bit values,
-#     and return them as a `rows x cols` matrix.
-#     """
-#     byte_count = rows * cols * 2
-#     # 1) send the command
-#     i2c.writeto(SLAVE_ADDR, bytes([command]))
-#     time.sleep_ms(50)  # give STM32 time to fill its buffer
-#     
-#     # 2) read exact number of bytes
-#     raw = i2c.readfrom(SLAVE_ADDR, byte_count)
-#     
-#     # 3) unpack to list of uint16
-#     vals = [raw[i] | (raw[i+1] << 8) for i in range(0, len(raw), 2)]
-#     
-#     # 4) reshape into matrix
-#     matrix = []
-#     for r in range(rows):
-#         start = r * cols
-#         matrix.append(vals[start:start + cols])
-#     return matrix
 
 def decode_binary_ts(b12):
     """Decode 12 bytes -> 'YYYY-MM-DD HH:MM:SS'.
@@ -240,41 +202,19 @@ def test_latest_ts():
 
 
 def main():
-    """
-    Main function to test sending commands and receiving data.
-    """
+    """Trigger a measurement routine and exercise all readback commands."""
     print("Testing STM32 communication...")
 
-    # # Request error logs
-    # print("\nRequesting ERROR logs from STM32:")
-    # error_logs = request_data(I2C_CMD_SEND_ERROR, READ_LENGTH)
-    # # You might process or print error_logs further here.
-    # time.sleep(1)
+    # Trigger one measurement routine and wait for the board to complete it.
+    #send_data(I2C_CMD_START)
 
-    # send_data(I2C_CMD_START)
-    
-    # time.sleep(1)
-
-    # # Request SD card data
-    # print("\nRequesting SD DATA from STM32:")
-    # sd_data = data_request(I2C_CMD_SEND_DATA, READ_LENGTH)
-    # # Additional processing of sd_data can be done here.
-    
-    # time.sleep(1)
-    
-    # Example: 5 rows of 10 fields → a 5×10 matrix
-    
-    # simulate error uncomment below
-    send_data(I2C_CMD_START)
-    
-    matrix_5x10,ts = data_request_matrix(I2C_CMD_SEND_DATA, rows=5, cols=10, offset=0)
+    # Read back the 5x10 data matrix (5 sample rows x 10 sensor fields).
+    matrix_5x10, ts = data_request_matrix(I2C_CMD_SEND_DATA, rows=5, cols=10, offset=0)
     print("5x10 matrix:")
     for row in matrix_5x10:
         print(row)
-    # print("timestamp")
-    # print(ts)
+    print("Timestamp:", ts)
 
-    # --- separate tests for the new commands ---
     print("\nPower status test:")
     test_pwr_status()
 
