@@ -147,7 +147,6 @@ void main_routine(void) {
 	HAL_Delay(5000);
 
 	printf("busy=%u\r\n", busy_flag_getter());
-	//turn_on_5v_plane();
 
 	printf("+5V device powered, delaying 5 seconds\r\n");
 	HAL_Delay(5000);
@@ -209,11 +208,6 @@ void main_routine(void) {
 		unmount_sdcard();
   }
 
-
-
-	//turn_off_5v_plane();
-
-	//printf("+5V devices off, delaying 5 seconds\r\n");
 	HAL_Delay(5000);
 
 	//------------------------- end cycle
@@ -368,11 +362,6 @@ int main(void)
 		      busyFlag = 1;
 		      printf("Power status: %u\r\n", pwr_flag_getter());
 		      load_pwr_status_buf();
-		      /*
-		      // Example of generic use for the future:
-		      // uint8_t pwr = pwr_flag_getter();
-		      // load_generic_payload(&pwr, 1);
-		      */
 		      i2c_flag_reset();
 		      busyFlag = 0;
 		      break;

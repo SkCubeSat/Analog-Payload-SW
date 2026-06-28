@@ -174,82 +174,75 @@ void load_buf(void)
         i2c_set_busy(0);
         return;
     }
-    
 
     uint8_t sdcard_status = mount_sdcard();
-    printf("after mount!\r\n");
-    //to test remove line below an also in the main.cpp !!
-//    uint8_t sdcard_status = 0;
 
+    //loading data from sd card file if sd card is present, otherwise load from ram buffer
     if(sdcard_status == 1){
 
-    	 // 1) Find latest S_*.CSV
-    	    if (!get_latest_s_file(filename, sizeof(filename))) {
-    	        printf("No S_*.CSV files found!\r\n");
-    	        unmount_sdcard();
-    	        i2c_set_error(1);
-    	        i2c_set_busy(0);
-    	        return;
-    	    }
-    	    printf("Loading latest file: %s\r\n", filename);
+        // 1) Find latest S_*.CSV
+        if (!get_latest_s_file(filename, sizeof(filename))) {
+            printf("No S_*.CSV files found!\r\n");
+            unmount_sdcard();
+            i2c_set_error(1);
+            i2c_set_busy(0);
+            return;
+        }
+        printf("Loading latest file: %s\r\n", filename);
 
-    	    // 2) Open it (wrapper sets global 'fres')
-    	    open_sdcard_file_read(filename);
-    	    if (fres != FR_OK) {
-    	        printf("open_sdcard_file_read failed (%d)\r\n", (int)fres);
-    	        unmount_sdcard();
-    	        i2c_set_error(1);
-    	        i2c_set_busy(0);
-    	        return;
-    	    }
+        // 2) Open it (wrapper sets global 'fres')
+        open_sdcard_file_read(filename);
+        if (fres != FR_OK) {
+            printf("open_sdcard_file_read failed (%d)\r\n", (int)fres);
+            unmount_sdcard();
+            i2c_set_error(1);
+            i2c_set_busy(0);
+            return;
+        }
 
-    	    // 3) Parse CSV -> values[]
-    	    valCount = parse_csv_rows(values);  // count of uint16s parsed
-    	    if (valCount == 0) {
-    	        printf("parse_csv_rows returned 0\r\n");
-    	        close_sdcard_file();
-    	        unmount_sdcard();
-    	        i2c_set_error(1);
-    	        i2c_set_busy(0);
-    	        return;
-    	    }
+        // 3) Parse CSV -> values[]
+        valCount = parse_csv_rows(values);  // count of uint16s parsed
+        if (valCount == 0) {
+            printf("parse_csv_rows returned 0\r\n");
+            close_sdcard_file();
+            unmount_sdcard();
+            i2c_set_error(1);
+            i2c_set_busy(0);
+            return;
+        }
 
-            printf("values SD parse check:");
-            for (uint32_t i = 0; i < valCount; i++) {
-                printf(" %u", values[i]);
-            }
-            printf("\r\n");
+        printf("values SD parse check:");
+        for (uint32_t i = 0; i < valCount; i++) {
+            printf(" %u", values[i]);
+        }
+        printf("\r\n");
     }
 
     else {
-        uint16_t logged_count = data_log_count();
+        // SD card not present, use data log buffer instead.
+        valCount = data_log_count();
     	printf("ram buffer used instead\r\n");
-        printf("\nvalCount: %u", logged_count);
+        printf("\nvalCount: %u", valCount);
         //printf("\nvalCount: %u", logged_routine);
     	//use buffer instead of SDcard
-        if (logged_count > PER_ROUTINE_DATA_COUNT) {
-            logged_count = PER_ROUTINE_DATA_COUNT;
+        if (valCount > PER_ROUTINE_DATA_COUNT) {
+            valCount = PER_ROUTINE_DATA_COUNT;
         }
 
         //memcpy(values, data_log[routine_num], data_count * sizeof(uint16_t));
         //using loop instead of memcpy since data_log is 2D array and we want to copy only the current routine's data
-        for (uint16_t i = 0; i < logged_count; i++) {
+        for (uint16_t i = 0; i < valCount; i++) {
             values[i] = data_log[routine_num][i];
         }
 
         printf("values copy check:");
-        for (uint16_t i = 0; i < logged_count; i++) {
+        for (uint16_t i = 0; i < valCount; i++) {
             printf(" %u", values[i]);
         }
         printf("\r\n");
 
-        valCount = logged_count;  // Set valCount so pack_values works correctly
-        printf("\nvalCount: %u", logged_count);
-    	printf("here here\r\n");
-
+        printf("\nvalCount: %u", valCount);
     }
-
-
 
     // 4) Pack numeric values into TxBuffer (temporarily at [0..))
     //    pack_values returns bytes written (valCount*2)
@@ -306,11 +299,7 @@ void load_buf(void)
     i2c_set_busy(0);
     i2c_set_ready(1);
 
-
 }
-
-
-
 void load_latest_ts_buf(void)
 {
     char filename[LATEST_NAME_MAX];
@@ -499,34 +488,6 @@ static uint32_t append_file_timestamp(const char *filename, uint8_t *buffer, uin
     return sizeof(ts);   // 12 bytes
 }
 
-//-----------------------cmd processing-----------------------------------
-void process_data(void)
-{
-    switch(RxData[0])
-    {
-        case I2C_CMD_RESET:
-            HAL_NVIC_SystemReset();
-            break;
-        case I2C_CMD_START:
-        	i2c_flag = I2C_FLAG_SET;
-            break;
-        case I2C_CMD_PWRSAV: // turn off the 5V supply for the testing ICs
-        	turn_off_5v_plane();
-        	pwr_flag_setter(PWR_SAV);
-        	HAL_TIM_Base_Stop_IT(&htim2);
-            break;
-        case I2C_CMD_PWRNOR:
-        	turn_on_5v_plane();
-        	pwr_flag_setter(PWR_NOR);
-        	HAL_TIM_Base_Start_IT(&htim2);
-        	break;
-        	//TODO add the transmit commands
-        case I2C_CMD_SEND_DATA:
-        	i2c_flag = I2C_FLAG_READ_DATA;
-        	break;
-    }
-}
-
 //------------------------------------------------------------------------------
 // Decode RTC payload and configure hardware RTC, then re-enable listen mode
 //------------------------------------------------------------------------------
@@ -672,7 +633,7 @@ void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c)
 
     if (errorCode == 4) // AF (ack failure): master stopped sending at less than RxSIZE
     {
-        process_data();
+        //enqueue_i2c_cmd(RXData[0]);;
     }
 
 
