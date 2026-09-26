@@ -248,7 +248,7 @@ def main():
     
     # Example: 5 rows of 10 fields → a 5×10 matrix
     
-    # simulate error uncomment below
+    set_stm32_rtc()
     send_data(I2C_CMD_START)
     time.sleep(35)
     request_rtc()
