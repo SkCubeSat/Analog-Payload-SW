@@ -246,11 +246,9 @@ def main():
     # # Additional processing of sd_data can be done here.
      
     
-    # Example: 5 rows of 10 fields → a 5×10 matrix
-    
     set_stm32_rtc()
     send_data(I2C_CMD_START)
-    time.sleep(35)
+    time.sleep(35) # this is the minimum delay to allow the STM32 to finish its data collection routine before requesting the data matrix. 
     request_rtc()
     set_stm32_rtc()
     
